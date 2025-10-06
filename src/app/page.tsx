@@ -1,11 +1,13 @@
 "use client";
 
 import { metadata } from "./metadata"; 
-import { useEffect, useMemo, useState, useRef, useCallback } from "react"
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Head from "next/head";
+import Link from "next/link";
 import {
   ArrowLeft,
   X,
+  Search,
   Utensils,
   CookingPot,
   Refrigerator,
@@ -18,6 +20,7 @@ import {
   Sandwich,
   GlassWater,
   SoupIcon,
+  Truck,
 } from "lucide-react";
 import Fuse from "fuse.js";
 import catalogData from "./data/catalog.json";
@@ -254,81 +257,72 @@ export default function HomePage() {
 
   const isSearchActive = filteredProducts !== null;
 
-  /* 🎞️ Promo Slides */
-const slides = [
-  {
-    icon: Utensils,
-    text: (
-      <>
-        Upgrade your <span className="text-blue-600 font-bold">kitchen essentials</span> with our premium collection.
-      </>
-    ),
-    bg: "from-blue-50 to-blue-100",
-  },
-  {
-    icon: CookingPot,
-    text: (
-      <>
-        Cook smarter with <span className="text-green-600 font-bold">modern cookware</span> and save time every day.
-      </>
-    ),
-    bg: "from-green-50 to-green-100",
-  },
-  {
-    icon: CupSoda,
-    text: (
-      <>
-        Refresh your dining with <span className="text-pink-600 font-bold">elegant glassware</span> & cutlery.
-      </>
-    ),
-    bg: "from-pink-50 to-pink-100",
-  },
-  {
-    icon: Refrigerator,
-    text: (
-      <>
-        Discover <span className="text-purple-600 font-bold">smart kitchen appliances</span> built for performance.
-      </>
-    ),
-    bg: "from-purple-50 to-purple-100",
-  },
-  {
-    icon: Boxes,
-    text: (
-      <>
-        Keep your kitchen tidy with <span className="text-amber-600 font-bold">organizers & storage</span> solutions.
-      </>
-    ),
-    bg: "from-amber-50 to-amber-100",
-  },
-  {
-    icon: Brush,
-    text: (
-      <>
-        Clean easy with <span className="text-cyan-600 font-bold">modern cleaning accessories</span>.
-      </>
-    ),
-    bg: "from-cyan-50 to-cyan-100",
-  },
-  {
-    icon: FlaskConical,
-    text: (
-      <>
-        Stay hydrated with <span className="text-red-600 font-bold">stylish bottles</span> & drinkware.
-      </>
-    ),
-    bg: "from-red-50 to-red-100",
-  },
-  {
-    icon: Salad,
-    text: (
-      <>
-        Perfect serveware for <span className="text-teal-600 font-bold">your dining table</span>.
-      </>
-    ),
-    bg: "from-teal-50 to-teal-100",
-  },
-];
+  /* 🎞️ Promo Slides (Premium Styled) */
+  const slides = [
+    {
+      text: "Upgrade your kitchen essentials with our premium collection.",
+      highlight: "20% OFF",
+      bg: "from-blue-50 via-blue-100 to-blue-200",
+      badge: "bg-blue-600 text-white",
+      icon: Utensils,
+    },
+    {
+      text: "Cook smarter with modern cookware and save time every day.",
+      highlight: "30% OFF",
+      bg: "from-green-50 via-emerald-100 to-emerald-200",
+      badge: "bg-emerald-600 text-white",
+      icon: CookingPot,
+    },
+    {
+      text: "Refresh your dining with elegant glassware and cutlery.",
+      highlight: "Flat 40% OFF",
+      bg: "from-rose-50 via-pink-100 to-rose-200",
+      badge: "bg-rose-600 text-white",
+      icon: CupSoda,
+    },
+    {
+      text: "Discover smart kitchen appliances built for performance.",
+      highlight: "New Launches",
+      bg: "from-violet-50 via-purple-100 to-violet-200",
+      badge: "bg-violet-600 text-white",
+      icon: Refrigerator,
+    },
+    {
+      text: "Keep your kitchen tidy with organizers & storage solutions.",
+      highlight: "Smart Picks",
+      bg: "from-amber-50 via-yellow-100 to-orange-200",
+      badge: "bg-amber-600 text-white",
+      icon: Boxes,
+    },
+    {
+      text: "Clean easy with modern cleaning accessories for every kitchen.",
+      highlight: "Top Rated",
+      bg: "from-sky-50 via-cyan-100 to-sky-200",
+      badge: "bg-sky-600 text-white",
+      icon: Brush,
+    },
+    {
+      text: "Stay hydrated with stylish bottles and drinkware.",
+      highlight: "Best Sellers",
+      bg: "from-orange-50 via-red-100 to-orange-200",
+      badge: "bg-orange-600 text-white",
+      icon: FlaskConical,
+    },
+    {
+      text: "Perfect serveware for your dining table and celebrations.",
+      highlight: "Premium Picks",
+      bg: "from-teal-50 via-emerald-100 to-teal-200",
+      badge: "bg-teal-600 text-white",
+      icon: Salad,
+    },
+    {
+      text: "Free delivery on orders above Rs 599 — shop more, save more!",
+      highlight: "Free Delivery",
+      bg: "from-lime-50 via-green-100 to-green-200",
+      badge: "bg-green-600 text-white",
+      icon: Truck,
+    },
+  ];
 
 const [currentSlide, setCurrentSlide] = useState(0);
 useEffect(() => {
@@ -388,75 +382,80 @@ useEffect(() => {
       {/* <meta name="google-adsense-account" content="ca-pub-XXXXXXXXX" /> */}
     </Head>
 
-    <main className="min-h-screen bg-gray-50 p-4" role="main">
+    <main className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 p-4 mt-17.5" role="main">
       {/* 🏠 Main Heading */}
+      <div className="max-w-7xl mx-auto space-y-8">
       <h1 className="sr-only">
         Premium Kitchen Store – Cookware, Utensils & Accessories
       </h1>
       {/* 🔍 Search (Sticky Top) */}
-        <div
-          className={`sticky top-0 z-50 bg-gray-50/80 backdrop-blur-sm mx-auto mb-4 
-                      relative flex items-center transition-all py-2 ${
-            isSearchActive ? "max-w-7xl" : "max-w-7xl"
-          }`}
-        >
-
-        {isSearchActive && (
-          <button
-            onClick={resetSearch}
-            className="mr-2 text-blue-600 hover:text-blue-800"
-            aria-label="Back"
-          >
-            <ArrowLeft size={24} />
-          </button>
-        )}
-
-        <form onSubmit={handleSubmit} className="flex-1 relative">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Search kitchen products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full p-3 rounded-xl border-2 border-blue-400 bg-white pr-10 
-                       shadow-sm focus:outline-none focus:ring-4 focus:ring-blue-300 
-                       focus:border-blue-500 focus:shadow-lg transition duration-200"
-          />
-
-          {/* ❌ Clear */}
-          {searchTerm && (
+       <div
+        className={`fixed top-[62px] left-0 right-0 z-40 bg-gray-50/90 backdrop-blur-md 
+                    flex items-center justify-center border-b border-gray-200 shadow-sm`}
+      >
+        <div className="flex items-center w-full max-w-7xl p-4">
+          {isSearchActive && (
             <button
-              type="button"
-              onClick={() => {
-                setSearchTerm("");
-                setSuggestions([]);
-                inputRef.current?.focus();
-              }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={resetSearch}
+              className="mr-2 text-blue-600 hover:text-blue-800"
+              aria-label="Back"
             >
-              <X size={20} />
+              <ArrowLeft size={24} />
             </button>
           )}
 
-          {/* 💬 Suggestions */}
-          {suggestions.length > 0 && (
-            <ul className="absolute z-10 bg-white rounded-xl shadow-lg w-full mt-2 max-h-60 overflow-y-auto">
-              {suggestions.map((p) => (
-                <li
-                  key={p.id}
-                  onClick={() => {
-                    setSearchTerm(p.title);
-                    performSearch(p.title);
-                    setSuggestions([]);
-                  }}
-                  className="p-2 hover:bg-gray-100 cursor-pointer"
-                >
-                  {p.title}
-                </li>
-              ))}
-            </ul>
-          )}
-        </form>
+          <form onSubmit={handleSubmit} className="flex-1 relative group">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-600 z-10"
+              size={22}
+            />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Search kitchen products..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-10 py-3 rounded-xl border-2 border-blue-400 
+                        backdrop-blur-sm shadow-sm focus:outline-none focus:ring-4 
+                        focus:ring-blue-300 focus:border-blue-500 focus:shadow-lg 
+                        transition duration-200"
+            />
+
+            {/* ❌ Clear */}
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setSuggestions([]);
+                  inputRef.current?.focus();
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            )}
+
+            {/* 💬 Suggestions */}
+            {suggestions.length > 0 && (
+              <ul className="absolute z-50 bg-white rounded-xl shadow-lg w-full mt-2 max-h-60 overflow-y-auto">
+                {suggestions.map((p) => (
+                  <li
+                    key={p.id}
+                    onClick={() => {
+                      setSearchTerm(p.title);
+                      performSearch(p.title);
+                      setSuggestions([]);
+                    }}
+                    className="p-2 hover:bg-gray-100 cursor-pointer"
+                  >
+                    {p.title}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </form>
+        </div>
       </div>
 
       {isSearchActive && filteredProducts && (
@@ -505,30 +504,48 @@ useEffect(() => {
       
       {!isSearchActive && (
       <>
-      {/* 🔁 Promo Slider */}
-      <section 
-            aria-labelledby="promo-heading"
-        className="mx-auto max-w-4xl overflow-hidden mb-6 relative"
+      {/* 🔁 Premium Edge-to-Edge Promo Slider */}
+      <section
+        aria-labelledby="promo-heading"
+        className="relative w-screen left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] overflow-hidden mb-8"
       >
         <h2 id="promo-heading" className="sr-only">
           Promotional Highlights
         </h2>
+
         <div
-          className="flex transition-transform duration-500"
+          className="flex transition-transform duration-700 ease-in-out"
           style={{ transform: `translateX(-${currentSlide * 100}%)` }}
         >
           {slides.map((slide, idx) => {
-            const Icon = slide.icon;
-            return (
-              <div
-                key={idx}
-                className={`min-w-full rounded-2xl bg-gradient-to-br ${slide.bg} p-6 flex flex-col items-center justify-center text-center`}
-              >
-                <Icon className="text-gray-700 mb-3" size={40} strokeWidth={2.5} />
-                <p className="text-lg font-medium text-gray-800">{slide.text}</p>
+          const Icon = slide.icon;
+          return (
+            <div
+              key={idx}
+              className={`w-full flex-shrink-0 bg-gradient-to-br ${slide.bg} p-5 sm:p-8 rounded-none sm:rounded-2xl shadow-md hover:shadow-xl transition-all duration-500 flex items-center justify-between`}
+            >
+              {/* 🧾 Text Section */}
+              <div className="flex-1 pr-4">
+                <span
+                  className={`inline-block px-3 py-1 mb-3 text-sm font-semibold rounded-full ${slide.badge} shadow-sm`}
+                >
+                  {slide.highlight}
+                </span>
+                <p className="text-lg sm:text-xl font-semibold text-gray-800 leading-snug">
+                  {slide.text}
+                </p>
               </div>
-            );
-          })}
+
+              {/* 🎯 Icon */}
+              <div className="flex-shrink-0">
+                <div className="bg-white/70 backdrop-blur-sm p-4 rounded-full shadow-inner">
+                  <Icon className="text-gray-700" size={48} strokeWidth={2.5} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
         </div>
       </section>
 
@@ -624,10 +641,8 @@ useEffect(() => {
           return (
             <a
               key={p.id}
-              href={p.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="relative bg-white rounded-xl shadow hover:shadow-lg transition flex flex-col overflow-hidden"
+              href={`/product/${p.id}`}
+              className="relative bg-white/90 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden border border-gray-100"
             >
               {/* 🏷️ Tag Badge */}
               {tag && (
@@ -650,16 +665,25 @@ useEffect(() => {
 
                 <div className="mt-2">
                   {/* 💸 Price */}
-                  <div className="flex items-center space-x-2">
-                    {cutPrice && (
-                      <span className="text-gray-400 text-sm line-through">
+                  <div className="mt-2 flex flex-col items-start">
+                  {/* 💸 Cut Price (Old) */}
+                  {cutPrice && (
+                    <div className="flex items-center space-x-2 mb-0.5">
+                      <span className="text-gray-400 text-xs line-through">
                         {formatPrice(cutPrice, p.currency)}
                       </span>
-                    )}
-                    <span className="text-blue-600 font-semibold">
-                      {formatPrice(displayPrice, p.currency)}
-                    </span>
-                  </div>
+
+                      <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">
+                        SAVE {((1 - displayPrice / cutPrice) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  )}
+                  {/* 💰 Actual Price (New) */}
+                  <span className="text-blue-600 font-semibold text-base">
+                    {formatPrice(displayPrice, p.currency)}
+                  </span>
+                </div>
+
 
                   {/* 🔽 Sale Price Drop */}
                   {tag === "Sale" && (
@@ -696,7 +720,7 @@ useEffect(() => {
           {visibleCount < productsToShow.length ? "Loading more..." : "No more products"}
         </div>
       )}
-
+      </div>
     </main>
     </>
   );
