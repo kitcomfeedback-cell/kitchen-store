@@ -1,9 +1,9 @@
+// src/app/page.tsx
 "use client";
 
 import { metadata } from "./metadata"; 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Head from "next/head";
-import Link from "next/link";
 import {
   ArrowLeft,
   X,
