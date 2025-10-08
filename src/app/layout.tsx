@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
 import { ShoppingCart, UserRound, UtensilsCrossed } from "lucide-react";
+import { Inter } from "next/font/google";
+const inter = Inter({ subsets: ["latin"] });
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,8 +31,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 text-gray-900`}
-      >
+          className={`${inter.className} ${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 text-gray-900`}
+          >
         {/* 🌟 Premium Header */}
         <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100">
           <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-8 py-3">

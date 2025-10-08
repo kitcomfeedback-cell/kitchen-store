@@ -4,6 +4,8 @@
 import { metadata } from "./metadata"; 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Head from "next/head";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   X,
@@ -47,7 +49,7 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 /* ⏱ Debounce Hook */
-const useDebounce = (value: string, delay = 300) => {
+const useDebounce = (value: string, delay = 200) => {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const handler = setTimeout(() => setDebounced(value), delay);
@@ -58,6 +60,7 @@ const useDebounce = (value: string, delay = 300) => {
 
 export default function HomePage() {
   /* 🧱 All Products (+50% price) */
+  const router = useRouter(); // ✅ Needed for router.push()
   const allProducts: Product[] = useMemo(() => {
     const items: Product[] = [];
     for (const c of catalogData.categories || []) {
@@ -89,8 +92,75 @@ export default function HomePage() {
     }
   }, [allProducts]);
 
+  /* ♻️ Restore scroll + search after products ready */
+  useEffect(() => {
+    if (randomizedProducts.length === 0) return; // ⏳ Wait until loaded
+    setIsLoading(true);
+
+    const lastQuery = sessionStorage.getItem("lastQuery");
+    const prefix = lastQuery ? "search" : "home";
+    const savedY = sessionStorage.getItem(`${prefix}ScrollY`);
+    const savedVisible = sessionStorage.getItem(`${prefix}Visible`);
+
+    if (savedY) restoreScrollY.current = Number(savedY);
+    if (savedVisible) restoreVisible.current = Number(savedVisible);
+
+    // 🧭 Only restore search once products are loaded
+    if (lastQuery) {
+      const url = new URL(window.location.href);
+      const subcatParam = url.searchParams.get("subcategory");
+      const searchParam = url.searchParams.get("search");
+      const priceParam = url.searchParams.get("price");
+
+      if (subcatParam) {
+        filterByCategory(subcatParam);
+      } else if (searchParam) {
+        performSearch(searchParam);
+      } else if (priceParam) {
+        const saved = sessionStorage.getItem("activePriceFilter");
+        if (saved) {
+          const { min, max, label } = JSON.parse(saved);
+          filterByPriceRange(min, max, label);
+        }
+      } else {
+        performSearch(lastQuery);
+      }
+    }else {
+      // ✅ Default: show shuffled home
+      const restored = restoreVisible.current;
+      const count = restored ? restored : 20;
+      setDisplayProducts(randomizedProducts.slice(0, count));
+      setVisibleCount(count);
+    }
+
+    const savedFilter = sessionStorage.getItem("activeFilter");
+    const savedBase = sessionStorage.getItem("baseFilteredProducts");
+
+    if (savedBase) {
+      const parsedBase = JSON.parse(savedBase);
+      setBaseFilteredProducts(parsedBase);
+      setFilteredProducts(parsedBase);
+      setDisplayProducts(parsedBase);
+      setVisibleCount(parsedBase.length);
+
+      if (savedFilter) {
+        setActiveFilter(savedFilter);
+      }
+
+      if (lastQuery) {
+        setSearchTerm(lastQuery);
+      }
+
+      setTimeout(() => setIsLoading(false), 200);
+      return;
+    }
+
+    setTimeout(() => setIsLoading(false), 200);
+  }, [randomizedProducts]);
+
   const [displayProducts, setDisplayProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[] | null>(null);
+  const [activeFilter, setActiveFilter] = useState("best");
   const [visibleCount, setVisibleCount] = useState(20);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -100,6 +170,8 @@ export default function HomePage() {
   const [baseFilteredProducts, setBaseFilteredProducts] = useState<Product[] | null>(null);
 
   const productsToShow = filteredProducts ?? randomizedProducts;
+  // 🌀 Loading state for clicks/search/filter
+  const [isLoading, setIsLoading] = useState(false);
 
   /* 🚀 Load initial 20 instantly */
   useEffect(() => {
@@ -107,12 +179,24 @@ export default function HomePage() {
     if (filteredProducts !== null) {
       setDisplayProducts(productsToShow);
       setVisibleCount(productsToShow.length);
-    } else {
-      // 🌀 Otherwise, show 20 products initially and use infinite scroll
-      setDisplayProducts(productsToShow.slice(0, 20));
-      setVisibleCount(20);
-    }
+      } else {
+        const restored = restoreVisible.current;
+        const count = restored ? restored : 20;
+        setDisplayProducts(productsToShow.slice(0, count));
+        setVisibleCount(count);
+      }
   }, [productsToShow, filteredProducts]);
+
+  // ⚡️ Scroll to saved position once products are rendered
+  useEffect(() => {
+  if (restoreScrollY.current != null && displayProducts.length > 0) {
+    const y = restoreScrollY.current;
+    restoreScrollY.current = null;
+    setTimeout(() => {
+      window.scrollTo({ top: y, behavior: "instant" }); // 🌀 smooth scroll restore
+    }, 50);
+  }
+}, [displayProducts]);
 
   /* ♾️ Infinite Scroll */
   const handleScroll = useCallback(() => {
@@ -159,6 +243,7 @@ export default function HomePage() {
 
   /* 🎯 Perform Search (Simple Grid Display) */
   const performSearch = (term: string) => {
+    setIsLoading(true);
     const query = term.trim().toLowerCase();
     if (!query) return;
 
@@ -191,7 +276,9 @@ export default function HomePage() {
 
     // ✅ Show all products in grid
     setFilteredProducts(allMatched);
-    setBaseFilteredProducts(allMatched); 
+    setBaseFilteredProducts(allMatched);
+    sessionStorage.setItem("baseFilteredProducts", JSON.stringify(allMatched));
+
     setDisplayProducts(allMatched);
     setVisibleCount(allMatched.length);
     setSuggestions([]);
@@ -199,10 +286,14 @@ export default function HomePage() {
     setSearchTerm(term);
 
     window.history.pushState({ search: true }, "", "?search=" + encodeURIComponent(term));
+    sessionStorage.setItem("lastQuery", term);
+    sessionStorage.setItem("searchScrollY", "0");
+    setTimeout(() => setIsLoading(false), 200);
   };
 
   /* 🎯 Filter by Subcategory (Show exactly all products under it, with +50% price) */
   const filterByCategory = (subcategoryName: string) => {
+    setIsLoading(true);
     const matchedSub = catalogData.categories
       ?.flatMap((c: any) => c.subcategories || [])
       ?.find((s: any) => s.name?.toLowerCase() === subcategoryName.toLowerCase());
@@ -218,6 +309,7 @@ export default function HomePage() {
 
     setFilteredProducts(matchedProducts);
     setBaseFilteredProducts(matchedProducts);
+    sessionStorage.setItem("baseFilteredProducts", JSON.stringify(matchedProducts));
     setDisplayProducts(matchedProducts);
     setVisibleCount(matchedProducts.length);
     setSuggestions([]);
@@ -229,6 +321,37 @@ export default function HomePage() {
       "",
       "?subcategory=" + encodeURIComponent(subcategoryName)
     );
+    sessionStorage.setItem("lastQuery", subcategoryName);
+    sessionStorage.setItem("searchScrollY", "0");
+    setTimeout(() => setIsLoading(false), 200);
+  };
+
+  const filterByPriceRange = (min: number, max: number, label: string) => {
+    setIsLoading(true);
+
+    const matchedProducts = randomizedProducts.filter(
+      (p) => (p.price ?? 0) >= min && (p.price ?? 0) <= max
+    );
+
+    setFilteredProducts(matchedProducts);
+    setBaseFilteredProducts(matchedProducts);
+    sessionStorage.setItem("baseFilteredProducts", JSON.stringify(matchedProducts));
+    setDisplayProducts(matchedProducts);
+    setVisibleCount(matchedProducts.length);
+    setSuggestions([]);
+    setSearchTerm(label);
+    inputRef.current?.blur();
+
+    // ✅ Save the active filter range, so it can be restored
+    const priceFilterData = JSON.stringify({ min, max, label });
+    sessionStorage.setItem("activePriceFilter", priceFilterData);
+
+    // ✅ Save the query to restore
+    sessionStorage.setItem("lastQuery", label);
+    window.history.pushState({ search: true }, "", "?price=" + encodeURIComponent(label));
+    sessionStorage.setItem("searchScrollY", "0");
+
+    setTimeout(() => setIsLoading(false), 200);
   };
 
   /* 🔙 Back navigation reset */
@@ -239,12 +362,21 @@ export default function HomePage() {
   }, []);
 
   const resetSearch = () => {
+    setIsLoading(true);
+    setTimeout(() => setIsLoading(false), 200);
     setSearchTerm("");
     setFilteredProducts(null);
     setSuggestions([]);
     setDisplayProducts(randomizedProducts.slice(0, 20));
     setVisibleCount(20);
-    window.history.replaceState(null, "", "/");
+    sessionStorage.removeItem("searchScrollY");
+    sessionStorage.removeItem("searchVisible");
+    sessionStorage.removeItem("lastQuery");
+    sessionStorage.removeItem("activeFilter");
+    sessionStorage.removeItem("baseFilteredProducts");
+    setActiveFilter("best");
+    window.history.pushState(null, "", "/");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -256,6 +388,9 @@ export default function HomePage() {
     price == null ? "Price not available" : `${currency || "PKR"} ${price.toLocaleString()}`;
 
   const isSearchActive = filteredProducts !== null;
+    // 🧭 Flags for restoring scroll
+  const restoreScrollY = useRef<number | null>(null);
+  const restoreVisible = useRef<number | null>(null);
 
   /* 🎞️ Promo Slides (Premium Styled) */
   const slides = [
@@ -324,13 +459,28 @@ export default function HomePage() {
     },
   ];
 
-const [currentSlide, setCurrentSlide] = useState(0);
-useEffect(() => {
-  const timer = setInterval(() => {
-    setCurrentSlide((prev) => (prev + 1) % slides.length);
-  }, 5000);
-  return () => clearInterval(timer);
-}, [slides.length]);
+  // 🌀 Smooth Infinite Loop Slider
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => prev + 1);
+      setIsTransitioning(true);
+    }, 4000); // every 4s
+    return () => clearInterval(interval);
+  }, []);
+
+  // ♻️ Reset position instantly when reaching duplicated end
+  useEffect(() => {
+    if (currentSlide === slides.length) {
+      const timeout = setTimeout(() => {
+        setIsTransitioning(false);
+        setCurrentSlide(0); // jump back without flicker
+      }, 700); // wait for transition to finish
+      return () => clearTimeout(timeout);
+    }
+  }, [currentSlide, slides.length]);
 
   /* 🧱 Sub-categories */
   const subCategories = [
@@ -348,12 +498,34 @@ useEffect(() => {
     { name: "Plates & Bowls", icon: GlassWater },
   ];
 
+     /* 💾 Save scroll + visible count in sessionStorage */
+  useEffect(() => {
+    const saveScroll = () => {
+      const keyPrefix = isSearchActive ? "search" : "home";
+      sessionStorage.setItem(`${keyPrefix}ScrollY`, String(window.scrollY));
+      sessionStorage.setItem(`${keyPrefix}Visible`, String(visibleCount));
+    };
+
+    // Save periodically
+    window.addEventListener("scroll", saveScroll);
+    window.addEventListener("beforeunload", saveScroll);
+    window.addEventListener("pagehide", saveScroll);
+
+    return () => {
+      window.removeEventListener("scroll", saveScroll);
+      window.removeEventListener("beforeunload", saveScroll);
+      window.removeEventListener("pagehide", saveScroll);
+    };
+  }, [isSearchActive, visibleCount]);
+
   return (
     <>
     <Head>
       {/* ✅ Canonical URL */}
       <link rel="canonical" href="https://yourdomain.com" />
-
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="use-credentials" />
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <meta name="theme-color" content="#2563eb" />
       {/* ✅ Robots (Allow indexing) */}
       <meta name="robots" content="index, follow" />
 
@@ -382,7 +554,11 @@ useEffect(() => {
       {/* <meta name="google-adsense-account" content="ca-pub-XXXXXXXXX" /> */}
     </Head>
 
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 p-4 mt-17.5" role="main">
+      <main
+        className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 
+                  p-4 sm:p-6 md:p-8 mt-16 transition-all duration-300 ease-out"
+        role="main"
+      >
       {/* 🏠 Main Heading */}
       <div className="max-w-7xl mx-auto space-y-8">
       <h1 className="sr-only">
@@ -457,48 +633,115 @@ useEffect(() => {
           </form>
         </div>
       </div>
+    {!isSearchActive && (
+      <>
+     {/* 💰 Price Range Pills */}
+      <div className="w-full overflow-x-auto scrollbar-hide px-4 sm:px-6 mt-2">
+        <div className="flex space-x-2 sm:space-x-3 py-2 min-w-max justify-center gap-2 sm:gap-3">
+          <button
+            onClick={() => filterByPriceRange(0, 300, "Under 300")}
+            className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
+          >
+            Under 300
+          </button>
+
+          <button
+            onClick={() => filterByPriceRange(300, 500, "Under 500")}
+            className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
+          >
+            Under 500
+          </button>
+
+          <button
+            onClick={() => filterByPriceRange(500, 700, "Under 700")}
+            className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
+          >
+            Under 700
+          </button>
+
+          <button
+            onClick={() => filterByPriceRange(700, 1000, "Under 999")}
+            className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
+          >
+            Under 999
+          </button>
+
+          <button
+            onClick={() => filterByPriceRange(1000, 1500, "Under 1499")}
+            className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
+          >
+            Under 1499
+          </button>
+
+          <button
+            onClick={() => filterByPriceRange(1500, 2000, "Under 1999")}
+            className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
+          >
+            Under 1999
+          </button>
+        </div>
+      </div>
+      </>
+      )}
 
       {isSearchActive && filteredProducts && (
         <>
-        <p className="text-center text-sm text-gray-600 mb-4">
+        <p className="text-center text-sm text-gray-600 mb-4 mt-2">
           Showing <span className="font-semibold">{filteredProducts.length}</span> results for <span className="font-semibold">"{searchTerm}"</span>
         </p>
         
-        {/* 🔽 Filter Dropdown */}
-      <div className="flex justify-end max-w-6xl mx-auto mb-4">
-        <select
-          onChange={(e) => {
-          const value = e.target.value;
+        {/* 🔽 Modern Filter Dropdown (Mobile Safe) */}
+        <div className="relative w-44 sm:w-48">
+          <select
+            onChange={(e) => {
+              const value = e.target.value;
+              setActiveFilter(value);
+              sessionStorage.setItem("activeFilter", value);
+              setIsLoading(true);
 
-          if (value === "best") {
-            // ✅ restore to original search/category results
-            if (baseFilteredProducts) {
-              setDisplayProducts(baseFilteredProducts);
-            }
-            return;
-          }
+              if (value === "best") {
+                if (baseFilteredProducts) {
+                  setDisplayProducts(baseFilteredProducts);
+                  setFilteredProducts(baseFilteredProducts);
+                }
+                setTimeout(() => setIsLoading(false), 200);
+                return;
+              }
 
-          let sorted = [...displayProducts];
+              let sorted = [...(filteredProducts ?? displayProducts)];
+              if (value === "high-low") sorted.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+              else if (value === "low-high") sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+              else sorted = shuffleArray(sorted);
 
-          if (value === "high-low") {
-            sorted.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-          } else if (value === "low-high") {
-            sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
-          } else if (value === "latest" || value === "new") {
-            sorted = shuffleArray(sorted);
-          }
+              setFilteredProducts(sorted);
+              setDisplayProducts(sorted);
+              setTimeout(() => setIsLoading(false), 200);
+            }}
+            value={activeFilter}
+            className="w-full appearance-none border-2 border-blue-300 rounded-xl py-2 pl-3 pr-10 text-sm 
+                      bg-white shadow-md focus:ring-4 focus:ring-blue-200 focus:border-blue-400 
+                      transition-all duration-200 cursor-pointer"
+          >
+            <option value="best">Best Match</option>
+            <option value="high-low">Price: High → Low</option>
+            <option value="low-high">Price: Low → High</option>
+            <option value="latest">Latest</option>
+            <option value="new">New</option>
+          </select>
 
-          setDisplayProducts(sorted);
-        }}
-          className="border border-blue-400 rounded-lg p-2 text-sm text-gray-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-300"
-        >
-          <option value="best">Best Match</option>
-          <option value="high-low">Price: High to Low</option>
-          <option value="low-high">Price: Low to High</option>
-          <option value="latest">Latest</option>
-          <option value="new">New</option>
-        </select>
-      </div>
+          {/* ▼ Dropdown icon */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500 pointer-events-none"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+
         </>
       )}
       
@@ -507,45 +750,44 @@ useEffect(() => {
       {/* 🔁 Premium Edge-to-Edge Promo Slider */}
       <section
         aria-labelledby="promo-heading"
-        className="relative w-screen left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] overflow-hidden mb-8"
+        className="relative w-full max-w-7xl mx-auto overflow-hidden rounded-2xl mb-8 mt-8 px-4"
       >
         <h2 id="promo-heading" className="sr-only">
           Promotional Highlights
         </h2>
 
         <div
-          className="flex transition-transform duration-700 ease-in-out"
+          className={`flex ${isTransitioning ? "transition-transform duration-700 ease-in-out" : ""}`}
           style={{ transform: `translateX(-${currentSlide * 100}%)` }}
         >
-          {slides.map((slide, idx) => {
-          const Icon = slide.icon;
-          return (
-            <div
-              key={idx}
-              className={`w-full flex-shrink-0 bg-gradient-to-br ${slide.bg} p-5 sm:p-8 rounded-none sm:rounded-2xl shadow-md hover:shadow-xl transition-all duration-500 flex items-center justify-between`}
-            >
-              {/* 🧾 Text Section */}
-              <div className="flex-1 pr-4">
-                <span
-                  className={`inline-block px-3 py-1 mb-3 text-sm font-semibold rounded-full ${slide.badge} shadow-sm`}
-                >
-                  {slide.highlight}
-                </span>
-                <p className="text-lg sm:text-xl font-semibold text-gray-800 leading-snug">
-                  {slide.text}
-                </p>
-              </div>
+          {[...slides, slides[0]].map((slide, idx) => {
+            const Icon = slide.icon;
+            return (
+              <div
+                key={idx}
+                className={`w-full flex-shrink-0 bg-gradient-to-br ${slide.bg} p-5 sm:p-8 rounded-xl shadow-md hover:shadow-xl transition-all duration-500 flex items-center justify-between`}
+              >
+                {/* 🧾 Text Section */}
+                <div className="flex-1 pr-4">
+                  <span
+                    className={`inline-block px-3 py-1 mb-3 text-sm font-semibold rounded-full ${slide.badge} shadow-sm`}
+                  >
+                    {slide.highlight}
+                  </span>
+                  <p className="text-lg sm:text-xl font-semibold text-gray-800 leading-snug">
+                    {slide.text}
+                  </p>
+                </div>
 
-              {/* 🎯 Icon */}
-              <div className="flex-shrink-0">
-                <div className="bg-white/70 backdrop-blur-sm p-4 rounded-full shadow-inner">
-                  <Icon className="text-gray-700" size={48} strokeWidth={2.5} />
+                {/* 🎯 Icon */}
+                <div className="flex-shrink-0">
+                  <div className="bg-white/70 backdrop-blur-sm p-4 rounded-full shadow-inner">
+                    <Icon className="text-gray-700" size={48} strokeWidth={2.5} />
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-
+            );
+          })}
         </div>
       </section>
 
@@ -585,12 +827,13 @@ useEffect(() => {
                 <button
                   key={idx}
                   onClick={() => filterByCategory(cat.name)}
-                  className={`flex flex-col items-center min-w-[90px] max-w-[90px] transition-transform hover:-translate-y-1`}
+                  className={`flex flex-col items-center min-w-[90px] max-w-[90px] transition-all duration-300 hover:-translate-y-1 hover:scale-105`}
                 >
                   <div
-                    className={`bg-gradient-to-br ${colorClass} w-[70px] h-[70px] flex items-center justify-center rounded-2xl shadow-md hover:shadow-lg`}
+                    className={`bg-gradient-to-br ${colorClass} w-[70px] h-[70px] flex items-center justify-center 
+                    rounded-2xl shadow-md hover:shadow-xl backdrop-blur-md bg-opacity-70 border border-white/40`}
                   >
-                    <Icon size={28} strokeWidth={2.5} />
+                    <Icon size={28} strokeWidth={2.5} className="drop-shadow-md" />
                   </div>
                   <span className="mt-2 text-xs font-semibold text-gray-800 text-center leading-tight line-clamp-2">
                     {cat.name}
@@ -639,10 +882,21 @@ useEffect(() => {
           }
 
           return (
-            <a
+           <a
               key={p.id}
               href={`/product/${p.id}`}
-              className="relative bg-white/90 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden border border-gray-100"
+              onClick={() => {
+                setIsLoading(true);
+                const keyPrefix = isSearchActive ? "search" : "home";
+                sessionStorage.setItem(`${keyPrefix}ScrollY`, String(window.scrollY));
+                sessionStorage.setItem(`${keyPrefix}Visible`, String(visibleCount));
+                if (activeFilter) sessionStorage.setItem("activeFilter", activeFilter);
+                if (isSearchActive && searchTerm) {
+                  sessionStorage.setItem("lastQuery", searchTerm);
+                }
+              }}
+              className="relative bg-white rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-300 
+              flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200"
             >
               {/* 🏷️ Tag Badge */}
               {tag && (
@@ -721,6 +975,17 @@ useEffect(() => {
         </div>
       )}
       </div>
+
+      {/* 🌫️ Loading Overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-300">
+          <div className="flex flex-col items-center space-y-2">
+            <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-blue-700 font-medium text-sm">Loading...</p>
+          </div>
+        </div>
+      )}
+
     </main>
     </>
   );
