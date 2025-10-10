@@ -6,6 +6,8 @@ import catalogData from "../../data/catalog.json";
 import {  } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   X,
   Plus,
@@ -34,6 +36,8 @@ export default function ProductPage() {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [note, setNote] = useState("");
+
+  const router = useRouter();
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => setCurrentIndex((prev) => (prev + 1) % images.length),
@@ -131,28 +135,49 @@ export default function ProductPage() {
   }, [id]);
 
   if (!product) {
-    return <div className="p-6 text-center text-gray-500">Loading...</div>;
-  }
+      return <div className="p-6 text-center text-gray-500">Loading...</div>;
+    }
 
- const images = (product.images?.filter(
-  (img: string) => img !== "https://www.shop.markaz.app/markaz_logo_mobile.png"
- ) || [product.image || "/placeholder.png"]);
+  // ✅ Normalize product images to ensure all display
+  const validImages =
+    Array.isArray(product.images) && product.images.length > 0
+      ? product.images.filter(
+          (img: string) =>
+            img &&
+            !img.toLowerCase().includes("placeholder") &&
+            !img.includes("markaz_logo_mobile") &&
+            !img.endsWith(".svg")
+        )
+      : [];
 
+  const images = [
+    ...(validImages.length ? validImages : []),
+    ...(product.image ? [product.image] : []),
+  ].filter(
+    (value, index, self) => value && self.indexOf(value) === index // remove duplicates
+  );
+
+  if (images.length === 0) images.push("/placeholder.png");
+
+
+  // ⬇️ Replace your entire applyCoupon function with this one
   const applyCoupon = () => {
-    // ✅ Dummy coupon logic
     const validCoupons: Record<string, number> = {
-    SAVE10: 0.1,
-    SAVE20: 0.2,
+      SAVE20: 0.2,
     };
 
+    if ((product.price || 0) < 599) {
+      setCouponError("Coupons only apply for orders above Rs.599");
+      setAppliedCoupon(null);
+      return;
+    }
+
     if (validCoupons[coupon.toUpperCase()]) {
-    setAppliedCoupon(coupon.toUpperCase());
-    setCouponError("");
+      setAppliedCoupon(coupon.toUpperCase());
+      setCouponError("");
     } else {
-    setAppliedCoupon(null);
-    setCouponError("Invalid coupon code");
-    // Optional: trigger cute toaster instead of label
-    // toast.error("Invalid coupon code");
+      setAppliedCoupon(null);
+      setCouponError("Invalid coupon code");
     }
   };
 
@@ -167,6 +192,76 @@ export default function ProductPage() {
   const basePrice = (product.price || 0) * 1.5;
   const displayPrice = Math.round(basePrice * (1 - discount));
 
+
+const addToCart = (goCheckout = false) => {
+  if (!product) return;
+
+  // ✅ Get existing cart or initialize empty
+  const cart = JSON.parse(localStorage.getItem("cart") || "[]");
+
+  // ✅ Check if product already exists in cart
+  const existingIndex = cart.findIndex((x: any) => x.id === product.id);
+
+
+  // ✅ Compute price and discount
+  const basePrice = (product.price || 0) * 1.5;
+  const discount =
+    appliedCoupon && appliedCoupon === "SAVE10"
+      ? 0.1
+      : appliedCoupon === "SAVE20"
+      ? 0.2
+      : 0;
+  const unitPrice = Math.round(basePrice * (1 - discount));
+
+  const subtotal = unitPrice * quantity;
+  const deliveryCharge = subtotal < 600 ? 100 : 0;
+
+  // ✅ Build the cart item
+  const item = {
+    id: product.id,
+    title: product.title,
+    image: product.image || "/placeholder.png",
+    price: unitPrice,
+    qty: quantity,
+    note: note || "",
+    size: selectedSize || null,
+    color: selectedColor || null,
+    category: product.category || null,
+    subcategory: product.subcategory || null,
+    meta: {
+      original_price: product.price || 0,
+      coupon: appliedCoupon || null,
+      discount_pct: discount * 100,
+      delivery_charge: deliveryCharge,
+      subtotal,
+      total_with_delivery: subtotal + deliveryCharge,
+    },
+  };
+
+  // ✅ Add or update cart
+  if (existingIndex >= 0) {
+    cart[existingIndex] = {
+      ...cart[existingIndex],
+      qty: cart[existingIndex].qty + quantity,
+    };
+  } else {
+    cart.push(item);
+  }
+
+  // ✅ Save cart
+  localStorage.setItem("cart", JSON.stringify(cart));
+
+  // ✅ Trigger global event (if you have a cart counter)
+  window.dispatchEvent(new Event("cartUpdated"));
+
+  // ✅ Toast feedback
+  toast.success(goCheckout ? "Proceeding to checkout..." : "Added to cart!");
+
+  // ✅ Navigate if Buy Now
+  if (goCheckout) {
+    router.push("/cart?checkout=1");
+  }
+};
 
   return (
   <div className="max-w-6xl mx-auto p-4 sm:p-8 bg-white rounded-2xl shadow-sm">
@@ -185,15 +280,23 @@ export default function ProductPage() {
             style={{ transform: `translateX(-${currentIndex * 100}%)` }}
           >
             {images.map((img: string, i: number) => (
-              <Image
+              <div
                 key={i}
-                src={img}
-                alt={product.title}
-                width={600}
-                height={600}
-                priority
-                className="object-cover w-full h-auto rounded-2xl flex-shrink-0"
-              />
+                className="w-full flex-shrink-0"
+                onClick={() => {
+                  setSelectedImage(img);
+                  setShowGallery(true);
+                }}
+              >
+                <Image
+                  src={img}
+                  alt={product.title}
+                  width={600}
+                  height={600}
+                  priority
+                  className="object-contain w-full h-[500px] rounded-2xl cursor-pointer bg-white"
+                />
+              </div>
             ))}
           </div>
 
@@ -230,20 +333,81 @@ export default function ProductPage() {
         </div>
       </div>
 
-      {/* 🔍 Fullscreen Image Modal */}
-      {showGallery && selectedImage && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
+      {/* 🔍 Fullscreen Lightbox with Slider */}
+      {showGallery && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
+          {/* ❌ Close Button */}
           <button
             onClick={() => setShowGallery(false)}
-            className="absolute top-6 right-6 text-white hover:text-red-400"
+            className="absolute top-6 right-6 text-white hover:text-red-400 transition"
           >
             <X size={36} />
           </button>
-          <img
-            src={selectedImage}
-            alt="fullscreen"
-            className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg"
-          />
+
+          {/* 🔄 Image Slider */}
+          <div
+            className="relative w-full max-w-5xl overflow-hidden flex items-center justify-center"
+            {...swipeHandlers}
+          >
+            <div
+              className="flex transition-transform duration-700 ease-in-out"
+              style={{
+                transform: `translateX(-${images.findIndex(img => img === selectedImage) * 100}%)`,
+              }}
+            >
+              {images.map((img, i) => (
+                <div
+                  key={i}
+                  className="w-full flex-shrink-0 flex items-center justify-center"
+                >
+                  <Image
+                    src={img}
+                    alt={`Product image ${i + 1}`}
+                    width={1000}
+                    height={800}
+                    className="object-contain max-h-[90vh] rounded-lg"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* ◀️ Prev */}
+            <button
+              onClick={() => {
+                const current = images.findIndex((img) => img === selectedImage);
+                const prev = (current - 1 + images.length) % images.length;
+                setSelectedImage(images[prev]);
+              }}
+              className="absolute left-5 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition"
+            >
+              ‹
+            </button>
+
+            {/* ▶️ Next */}
+            <button
+              onClick={() => {
+                const current = images.findIndex((img) => img === selectedImage);
+                const next = (current + 1) % images.length;
+                setSelectedImage(images[next]);
+              }}
+              className="absolute right-5 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition"
+            >
+              ›
+            </button>
+          </div>
+
+          {/* ⚪ Dots */}
+          <div className="flex space-x-3 mt-6">
+            {images.map((img, i) => (
+              <button
+                key={i}
+                onClick={() => setSelectedImage(img)}
+                className={`w-3 h-3 rounded-full transition-all ${
+                  img === selectedImage ? "bg-white scale-125" : "bg-gray-500"
+                }`}
+              ></button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -299,44 +463,33 @@ export default function ProductPage() {
         </button>
 
         {showDescription && product.description && (
-        <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
+          <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
             <h3 className="text-base font-semibold mb-2 text-gray-800">Product Description</h3>
-            <div className="text-sm text-gray-700 space-y-1">
-            {product.description
-            .split("\n")
-            .map((line: string) => line.trim()) // 👈 give type
-            .filter(
-                (line: string) =>
-                line.length > 0 &&
-                !/^product\s*code\s*:/i.test(line) &&
-                !/^MZ\d+/i.test(line) &&
-                !/PMGTIM/i.test(line)
-            )
-            .map((line: string, i: number) => { // 👈 also here
-                // 🪄 Fix “1 3 cm” → “1-3 cm”
-                line = line.replace(/1\s*3\s*cm/gi, "1-3 cm");
+            <div className="text-sm text-gray-700 space-y-2">
+              {product.description
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(line => 
+                  line.length > 0 &&
+                  !/^product\s*code\s*:/i.test(line) && // 🚫 remove "Product Code: ..."
+                  !/^mz\d+/i.test(line) // 🚫 remove any line starting with MZ number
+                )
+                .map((line, i) => {
+                  const isBullet =
+                    /^\d+[\.\)]/.test(line) || // 1), 2. etc.
+                    /^[•\-–]/.test(line) || // • or - or –
+                    /:/.test(line); // looks like a feature
 
-                const [label, ...rest] = line.split(":");
-                const value = rest.join(":").trim();
-
-                if (!value) {
-                return (
-                    <div key={i} className="text-gray-700">
-                    {label}
-                    </div>
-                );
-                }
-
-                return (
-                <div key={i}>
-                    <span className="font-semibold">{label.trim()}:</span>
-                    <span className="ml-1">{value}</span>
-                </div>
-                );
-            })}
-
+                  return isBullet ? (
+                    <li key={i} className="list-disc list-inside">
+                      {line.replace(/^[•\-–\d\.\)]+\s*/, "")}
+                    </li>
+                  ) : (
+                    <p key={i}>{line}</p>
+                  );
+                })}
             </div>
-        </div>
+          </div>
         )}
         </div>
 
@@ -366,49 +519,81 @@ export default function ProductPage() {
 
             return (
                 <>
-                {/* ✅ Sizes Section */}
-                {sizeList.length > 0 && (
-                    <div className="mt-4">
-                    <h3 className="font-medium mb-2">Sizes</h3>
-                    <div className="flex flex-wrap gap-2">
-                        {sizeList.map((s: string, index: number) => (
-                        <button
-                            key={index}
-                            onClick={() => setSelectedSize(s)}
-                            className={`px-3 py-1 rounded border ${
-                            selectedSize === s
-                                ? "bg-black text-white"
-                                : "bg-white text-gray-700"
-                            }`}
-                        >
-                            {s}
-                        </button>
-                        ))}
-                    </div>
-                    </div>
-                )}
+                {/* 🎨 Colors Section */}
+                {(() => {
+                  if (!product.description) return null;
 
-                {/* ✅ Colors Section */}
-                {colorList.length > 0 && (
+                  // 🧩 Extract color line from description
+                  const colorLineMatch = product.description.match(/(?:Color|Colors)\s*:\s*([^\n]+)/i);
+
+                  const colorList: string[] = colorLineMatch
+                    ? colorLineMatch[1]
+                        .split(/[,/|]+/)
+                        .map((c: string) => c.trim())
+                        .filter(Boolean)
+                    : [];
+
+                  if (colorList.length === 0) return null;
+
+                  // 🎨 Common color name to HEX map
+                  const colorMap: Record<string, string> = {
+                    red: "#FF0000",
+                    blue: "#0000FF",
+                    green: "#008000",
+                    black: "#000000",
+                    white: "#FFFFFF",
+                    yellow: "#FFFF00",
+                    pink: "#FFC0CB",
+                    orange: "#FFA500",
+                    purple: "#800080",
+                    grey: "#808080",
+                    gray: "#808080",
+                    brown: "#8B4513",
+                    beige: "#F5F5DC",
+                    silver: "#C0C0C0",
+                    gold: "#FFD700",
+                  };
+
+                  return (
                     <div className="mt-4">
-                    <h3 className="font-medium mb-2">Colors</h3>
-                    <div className="flex flex-wrap gap-2">
-                        {colorList.map((c: string, index: number) => (
-                        <button
-                            key={index}
-                            onClick={() => setSelectedColor(c)}
-                            className={`px-3 py-1 rounded border ${
-                            selectedColor === c
-                                ? "bg-black text-white"
-                                : "bg-white text-gray-700"
-                            }`}
-                        >
-                            {c}
-                        </button>
-                        ))}
+                      <h3 className="font-medium mb-2">Available Colors</h3>
+                      <div className="flex flex-wrap gap-3">
+                        {colorList.map((c: string, index: number) => {
+                          const colorKey = c.toLowerCase();
+                          const colorValue = colorMap[colorKey] || "#ccc";
+
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => setSelectedColor(c)}
+                              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition ${
+                                selectedColor === c
+                                  ? "border-blue-500 bg-blue-50"
+                                  : "border-gray-300 bg-white"
+                              }`}
+                            >
+                              {/* 🟢 Color Circle */}
+                              <span
+                                className="w-6 h-6 rounded-full border"
+                                style={{
+                                  backgroundColor: colorValue,
+                                  borderColor:
+                                    colorKey === "white" || colorKey === "yellow"
+                                      ? "#ccc"
+                                      : "transparent",
+                                }}
+                              />
+                              {/* 🏷️ Color Name */}
+                              <span className="text-sm font-medium capitalize text-gray-800">
+                                {c}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    </div>
-                )}
+                  );
+                })()}
                 </>
             );
             })()}
@@ -490,15 +675,23 @@ export default function ProductPage() {
 
         {/* 🛒 Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <button className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
+          <button
+            onClick={() => addToCart(false)}
+            className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition"
+          >
             <ShoppingCart size={20} />
             <span>Add to Cart</span>
           </button>
-          <button className="flex-1 flex items-center justify-center space-x-2 bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition">
+
+          <button
+            onClick={() => addToCart(true)}
+            className="flex-1 flex items-center justify-center space-x-2 bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition"
+          >
             <CreditCard size={20} />
             <span>Buy Now</span>
           </button>
         </div>
+
       </div>
       </div>
 

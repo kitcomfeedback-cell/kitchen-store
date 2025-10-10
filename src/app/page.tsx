@@ -173,6 +173,13 @@ export default function HomePage() {
   // 🌀 Loading state for clicks/search/filter
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    // ⚙️ Preload a few most visible product pages
+    randomizedProducts.slice(0, 10).forEach(p => {
+      router.prefetch(`/product/${p.id}`);
+    });
+  }, [randomizedProducts]);
+
   /* 🚀 Load initial 20 instantly */
   useEffect(() => {
     // 🧠 If search/filter is active, show ALL results
@@ -566,7 +573,7 @@ export default function HomePage() {
       </h1>
       {/* 🔍 Search (Sticky Top) */}
        <div
-        className={`fixed top-[62px] left-0 right-0 z-40 bg-gray-50/90 backdrop-blur-md 
+        className={`fixed top-[80px] left-0 right-0 z-40 bg-gray-50/90 backdrop-blur-md 
                     flex items-center justify-center border-b border-gray-200 shadow-sm`}
       >
         <div className="flex items-center w-full max-w-7xl p-4">
@@ -636,7 +643,7 @@ export default function HomePage() {
     {!isSearchActive && (
       <>
      {/* 💰 Price Range Pills */}
-      <div className="w-full overflow-x-auto scrollbar-hide px-4 sm:px-6 mt-2">
+      <div className="w-full overflow-x-auto scrollbar-hide px-4 sm:px-6 mt-4">
         <div className="flex space-x-2 sm:space-x-3 py-2 min-w-max justify-center gap-2 sm:gap-3">
           <button
             onClick={() => filterByPriceRange(0, 300, "Under 300")}
@@ -686,7 +693,7 @@ export default function HomePage() {
 
       {isSearchActive && filteredProducts && (
         <>
-        <p className="text-center text-sm text-gray-600 mb-4 mt-2">
+        <p className="text-center text-sm text-gray-600 mb-4 mt-4">
           Showing <span className="font-semibold">{filteredProducts.length}</span> results for <span className="font-semibold">"{searchTerm}"</span>
         </p>
         
@@ -882,11 +889,13 @@ export default function HomePage() {
           }
 
           return (
-           <a
+            <a
               key={p.id}
               href={`/product/${p.id}`}
+              onMouseEnter={() => router.prefetch(`/product/${p.id}`)} // ⚡ Preload page on hover
+              onTouchStart={() => router.prefetch(`/product/${p.id}`)} // ⚡ Preload on mobile tap
               onClick={() => {
-                setIsLoading(true);
+                // 🧠 Save session + scroll before navigating
                 const keyPrefix = isSearchActive ? "search" : "home";
                 sessionStorage.setItem(`${keyPrefix}ScrollY`, String(window.scrollY));
                 sessionStorage.setItem(`${keyPrefix}Visible`, String(visibleCount));
@@ -894,9 +903,12 @@ export default function HomePage() {
                 if (isSearchActive && searchTerm) {
                   sessionStorage.setItem("lastQuery", searchTerm);
                 }
+
+                // ⚡ Optional: Hide loader flicker
+                setIsLoading(false);
               }}
               className="relative bg-white rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-300 
-              flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200"
+                flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200"
             >
               {/* 🏷️ Tag Badge */}
               {tag && (
