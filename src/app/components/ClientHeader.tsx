@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { ShoppingBag, UserRound, UtensilsCrossed } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ClientHeader() {
+
+  const pathname = usePathname();
   const [cartCount, setCartCount] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -54,6 +56,13 @@ export default function ClientHeader() {
   }, [isMounted]);
 
   if (!isMounted) return null;
+  // ✅ Dynamic class for border
+  const headerClass = `
+    sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm
+    ${pathname === "/" ? "" : "border-b border-gray-100"}
+  `;
+
+  if (!isMounted) return null;
 
   return (
     <>
@@ -78,7 +87,7 @@ export default function ClientHeader() {
       </AnimatePresence>
 
       {/* 🔝 Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm">
+      <header className={headerClass}>
         {/* 🌈 Top bar loader */}
         <AnimatePresence>
           {isNavigating && (
@@ -107,13 +116,14 @@ export default function ClientHeader() {
                   <img
                     src="/logo.png"
                     alt="Kitchenary Logo"
-                    className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+                    className="w-10 h-8 sm:w-20 sm:h-12 object-contain"
                   />
                   
-                </motion.div>
-                <span className="text-base sm:text-lg font-bold tracking-tight text-blue-300">
+                  <span className="text-base sm:text-lg font-bold tracking-tight text-blue-400">
                    &nbsp; Kitchenary &nbsp;
                 </span>
+                </motion.div>
+                
               </Link>
             </motion.div>
 

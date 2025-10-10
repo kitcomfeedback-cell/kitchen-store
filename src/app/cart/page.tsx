@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2 } from "lucide-react";
+import { Trash2 , ArrowLeft} from "lucide-react";
+import { useRouter } from "next/navigation";
 
 type CartItem = {
   id: string;
@@ -40,6 +41,7 @@ export default function CartPage() {
   const [profile, setProfile] = useState<Profile>({});
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
 
   // Load cart & profile
   useEffect(() => {
@@ -262,7 +264,19 @@ const selectedCount = selectedItems.length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 pb-28 p-4">
-      <h1 className="text-3xl font-bold text-gray-800 mb-4">🛒 Your Cart</h1>
+
+       <div className="flex">
+
+        {/* ⬅️ Cool Back Button */}
+        <button
+          onClick={() => router.back()}
+        >
+          <ArrowLeft size={35} className="text-3xl font-bold text-gray-800 mb-3" />
+        </button>
+
+        <h1 className="text-3xl font-bold text-gray-800 mb-4">&nbsp; 🛒 Your Cart</h1>
+
+       </div>
 
      {/* Address / Profile Section */}
       <div className="bg-white shadow rounded-xl p-4 mb-4 border">

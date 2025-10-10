@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+
 import {
   User,
   Mail,
@@ -10,6 +12,7 @@ import {
   Package,
   List,
   History,
+  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -64,6 +67,7 @@ export default function Profile() {
 
   const [showReturnInput, setShowReturnInput] = useState<{ [id: string]: boolean }>({});
   const [returnReason, setReturnReason] = useState<ReturnReasonState>({});
+  const router = useRouter();
 
   function isReturnWindowOpen(order: DBOrder) {
     if (!order.completed_at) return false;
@@ -336,10 +340,16 @@ export default function Profile() {
 
   return (
     <div className="space-y-8 p-5 bg-gray-50 min-h-screen">
-     
-      <div className="flex">
+      {/* ⬅️ Cool Back Button */}
+    
+        <div className="flex">
+      <button
+        onClick={() => router.back()}
+      >
+        <ArrowLeft size={35} className="text-2xl pb-2 font-bold text-gray-900" />
+      </button>
 
-        <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
+        <h1 className="text-2xl font-bold text-gray-900"> &nbsp; My Profile</h1>
         
         {profile?.email ? (
         <button

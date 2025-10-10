@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { startTransition } from "react";
 import {
   ArrowLeft,
   X,
@@ -47,16 +48,6 @@ function shuffleArray<T>(array: T[]): T[] {
   }
   return arr;
 }
-
-/* ⏱ Debounce Hook */
-const useDebounce = (value: string, delay = 200) => {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debounced;
-};
 
 export default function HomePage() {
   /* 🧱 All Products (+50% price) */
@@ -139,13 +130,25 @@ export default function HomePage() {
     if (savedBase) {
       const parsedBase = JSON.parse(savedBase);
       setBaseFilteredProducts(parsedBase);
-      setFilteredProducts(parsedBase);
-      setDisplayProducts(parsedBase);
-      setVisibleCount(parsedBase.length);
 
+      let restoredProducts = parsedBase;
+
+      // ✅ Restore active filter (sort order)
       if (savedFilter) {
         setActiveFilter(savedFilter);
+
+        if (savedFilter === "high-low") {
+          restoredProducts = [...parsedBase].sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+        } else if (savedFilter === "low-high") {
+          restoredProducts = [...parsedBase].sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+        } else if (savedFilter === "latest" || savedFilter === "new") {
+          restoredProducts = [...parsedBase].reverse();
+        }
       }
+
+      setFilteredProducts(restoredProducts);
+      setDisplayProducts(restoredProducts);
+      setVisibleCount(restoredProducts.length);
 
       if (lastQuery) {
         setSearchTerm(lastQuery);
@@ -164,7 +167,7 @@ export default function HomePage() {
   const [visibleCount, setVisibleCount] = useState(20);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const debouncedSearchTerm = searchTerm;
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [baseFilteredProducts, setBaseFilteredProducts] = useState<Product[] | null>(null);
@@ -219,8 +222,18 @@ export default function HomePage() {
 
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    // ✅ Trigger scroll check once after restore
+    const timer = setTimeout(() => {
+      handleScroll();
+    }, 300);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearTimeout(timer);
+    };
   }, [handleScroll]);
+
 
   /* 💡 Fuzzy Suggestions */
   useEffect(() => {
@@ -249,29 +262,42 @@ export default function HomePage() {
   }, [debouncedSearchTerm, randomizedProducts, filteredProducts]);
 
   /* 🎯 Perform Search (Simple Grid Display) */
-  const performSearch = (term: string) => {
-    setIsLoading(true);
+  const performSearch = async (term: string) => {
     const query = term.trim().toLowerCase();
     if (!query) return;
 
+    // ⚡ Immediately show dummy skeleton results
+    setIsLoading(true);
+    const skeletons = Array.from({ length: 10 }).map((_, i) => ({
+      id: `skeleton-${i}`,
+      title: "Loading...",
+      price: null,
+      currency: "PKR",
+      image: "/placeholder.png",
+      link: "#",
+    }));
+    setDisplayProducts(skeletons);
+
+    // 💡 Use a tiny delay to mimic "instant feedback"
+    await new Promise(r => setTimeout(r, 50));
+
+    // ⚙️ Perform actual Fuse search in background
     const fuse = new Fuse(randomizedProducts, {
       keys: [
         { name: "title", weight: 0.7 },
         { name: "description", weight: 0.2 },
         { name: "brand", weight: 0.1 },
       ],
-      threshold: 0.6, // a bit lenient so similar items appear
+      threshold: 0.6,
       includeScore: true,
     });
 
     const results = fuse.search(query).map(r => r.item);
-
-    // ✅ Remove duplicates, but keep all matching products (even from same category)
     const uniqueResults = Array.from(new Set(results.map(p => p.id))).map(
       id => results.find(p => p.id === id)!
     );
 
-    // ✅ Add fillers if too few
+    // 🧱 Fill with some randoms if too few
     const minResults = 20;
     let allMatched = [...uniqueResults];
     if (allMatched.length < minResults) {
@@ -281,21 +307,20 @@ export default function HomePage() {
       allMatched = [...allMatched, ...fillers];
     }
 
-    // ✅ Show all products in grid
     setFilteredProducts(allMatched);
     setBaseFilteredProducts(allMatched);
-    sessionStorage.setItem("baseFilteredProducts", JSON.stringify(allMatched));
-
     setDisplayProducts(allMatched);
     setVisibleCount(allMatched.length);
     setSuggestions([]);
-    inputRef.current?.blur();
     setSearchTerm(term);
+    inputRef.current?.blur();
 
     window.history.pushState({ search: true }, "", "?search=" + encodeURIComponent(term));
     sessionStorage.setItem("lastQuery", term);
     sessionStorage.setItem("searchScrollY", "0");
-    setTimeout(() => setIsLoading(false), 200);
+
+    // 🌀 Smoothly remove skeleton after results are ready
+    setTimeout(() => setIsLoading(false), 150);
   };
 
   /* 🎯 Filter by Subcategory (Show exactly all products under it, with +50% price) */
@@ -573,10 +598,10 @@ export default function HomePage() {
       </h1>
       {/* 🔍 Search (Sticky Top) */}
        <div
-        className={`fixed top-[80px] left-0 right-0 z-40 bg-gray-50/90 backdrop-blur-md 
-                    flex items-center justify-center border-b border-gray-200 shadow-sm`}
+        className={`fixed top-[72px] sm:top-[86px] z-[60] left-0 right-0 backdrop-blur-sm bg-white/40 
+                    flex items-center justify-center shadow-sm`}
       >
-        <div className="flex items-center w-full max-w-7xl p-4">
+        <div className="flex items-center w-full max-w-7xl p-2">
           {isSearchActive && (
             <button
               onClick={resetSearch}
@@ -597,7 +622,14 @@ export default function HomePage() {
               type="text"
               placeholder="Search kitchen products..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchTerm(val);
+                if (val === "") {
+                  setFilteredProducts(null);
+                  setSuggestions([]);
+                }
+              }}
               className="w-full pl-12 pr-10 py-3 rounded-xl border-2 border-blue-400 
                         backdrop-blur-sm shadow-sm focus:outline-none focus:ring-4 
                         focus:ring-blue-300 focus:border-blue-500 focus:shadow-lg 
@@ -643,8 +675,8 @@ export default function HomePage() {
     {!isSearchActive && (
       <>
      {/* 💰 Price Range Pills */}
-      <div className="w-full overflow-x-auto scrollbar-hide px-4 sm:px-6 mt-4">
-        <div className="flex space-x-2 sm:space-x-3 py-2 min-w-max justify-center gap-2 sm:gap-3">
+      <div className="w-full overflow-x-auto scrollbar-hide px-2 sm:px-6">
+        <div className="flex space-x-2 sm:space-x-3 py-2 min-w-max justify-center sm:gap-3">
           <button
             onClick={() => filterByPriceRange(0, 300, "Under 300")}
             className="px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium shadow-sm hover:bg-gray-200 transition-all"
@@ -693,7 +725,7 @@ export default function HomePage() {
 
       {isSearchActive && filteredProducts && (
         <>
-        <p className="text-center text-sm text-gray-600 mb-4 mt-4">
+        <p className="text-center text-sm text-gray-600 mb-4">
           Showing <span className="font-semibold">{filteredProducts.length}</span> results for <span className="font-semibold">"{searchTerm}"</span>
         </p>
         
@@ -924,7 +956,12 @@ export default function HomePage() {
                 className="object-cover aspect-square rounded-t-xl"
                 loading="lazy"
               />
-
+              {p.id.startsWith("skeleton-") && (
+                <div className="p-3 flex flex-col flex-1">
+                  <div className="skeleton h-4 w-3/4 rounded mb-2"></div>
+                  <div className="skeleton h-3 w-1/2 rounded"></div>
+                </div>
+              )}
               {/* 💰 Price Info */}
               <div className="p-3 flex flex-col flex-1">
                 <h2 className="font-semibold text-sm line-clamp-2 flex-1">{p.title}</h2>

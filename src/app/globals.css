@@ -32,3 +32,12 @@ body {
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
 }
+
+@keyframes pulse-bg {
+  0% { background-color: #f3f4f6; }
+  50% { background-color: #e5e7eb; }
+  100% { background-color: #f3f4f6; }
+}
+.skeleton {
+  animation: pulse-bg 1.5s ease-in-out infinite;
+}

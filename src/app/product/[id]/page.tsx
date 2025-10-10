@@ -17,6 +17,9 @@ import {
   Tag,
   ChevronDown,  
   XCircle,
+  ArrowLeft,
+  ChevronLeft, 
+  CornerUpLeft,
 } from "lucide-react";
 
 export default function ProductPage() {
@@ -265,6 +268,12 @@ const addToCart = (goCheckout = false) => {
 
   return (
   <div className="max-w-6xl mx-auto p-4 sm:p-8 bg-white rounded-2xl shadow-sm">
+    {/* ⬅️ Cool Back Button */}
+    <button
+      onClick={() => router.back()}
+    >
+      <ArrowLeft size={35} className="text-black" />
+    </button>
     {/* 🧱 Main Layout: Image Left, Details Right */}
     <div className="flex flex-col lg:flex-row gap-8">
       
