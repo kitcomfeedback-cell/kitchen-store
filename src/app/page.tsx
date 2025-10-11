@@ -24,6 +24,7 @@ import {
   GlassWater,
   SoupIcon,
   Truck,
+  ArrowUp,
 } from "lucide-react";
 import Fuse from "fuse.js";
 import catalogData from "./data/catalog.json";
@@ -587,8 +588,8 @@ export default function HomePage() {
     </Head>
 
       <main
-        className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 
-                  p-4 sm:p-6 md:p-8 mt-16 transition-all duration-300 ease-out"
+        className="min-h-screen bg-gradient-to-br from-white via-blue-50/40 to-gray-100 
+           p-4 sm:p-6 md:p-8 mt-20 transition-all duration-300 ease-out"
         role="main"
       >
       {/* 🏠 Main Heading */}
@@ -598,9 +599,8 @@ export default function HomePage() {
       </h1>
       {/* 🔍 Search (Sticky Top) */}
        <div
-        className={`fixed top-[72px] sm:top-[86px] z-[60] left-0 right-0 backdrop-blur-sm bg-white/40 
-                    flex items-center justify-center shadow-sm`}
-      >
+          className="fixed top-[72px] sm:top-[86px] z-[60] left-0 right-0 bg-transparent flex items-center justify-center"
+        >
         <div className="flex items-center w-full max-w-7xl p-2">
           {isSearchActive && (
             <button
@@ -611,65 +611,62 @@ export default function HomePage() {
               <ArrowLeft size={24} />
             </button>
           )}
-
-          <form onSubmit={handleSubmit} className="flex-1 relative group">
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-600 z-10"
-              size={22}
-            />
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Search kitchen products..."
-              value={searchTerm}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSearchTerm(val);
-                if (val === "") {
-                  setFilteredProducts(null);
-                  setSuggestions([]);
-                }
-              }}
-              className="w-full pl-12 pr-10 py-3 rounded-xl border-2 border-blue-400 
-                        backdrop-blur-sm shadow-sm focus:outline-none focus:ring-4 
-                        focus:ring-blue-300 focus:border-blue-500 focus:shadow-lg 
-                        transition duration-200"
-            />
-
-            {/* ❌ Clear */}
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchTerm('');
-                  setSuggestions([]);
-                  inputRef.current?.focus();
+          <div className="w-full max-w-3xl px-3">
+            <form onSubmit={handleSubmit} className="relative group">
+              <div className="absolute inset-0 bg-white/60 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-sm group-hover:shadow-lg transition-all"></div>
+              <Search
+                className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600 z-10"
+                size={22}
+              />
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Search kitchen products..."
+                value={searchTerm}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchTerm(val);
+                  if (val === "") {
+                    setFilteredProducts(null);
+                    setSuggestions([]);
+                  }
                 }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            )}
+                className="relative w-full pl-12 pr-10 py-3 rounded-2xl bg-transparent border-none focus:ring-2 focus:ring-blue-300 text-gray-700 placeholder-gray-400 focus:outline-none transition-all"
+              />
 
-            {/* 💬 Suggestions */}
-            {suggestions.length > 0 && (
-              <ul className="absolute z-50 bg-white rounded-xl shadow-lg w-full mt-2 max-h-60 overflow-y-auto">
-                {suggestions.map((p) => (
-                  <li
-                    key={p.id}
-                    onClick={() => {
-                      setSearchTerm(p.title);
-                      performSearch(p.title);
-                      setSuggestions([]);
-                    }}
-                    className="p-2 hover:bg-gray-100 cursor-pointer"
-                  >
-                    {p.title}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </form>
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSuggestions([]);
+                    inputRef.current?.focus();
+                  }}
+                  className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={20} />
+                </button>
+              )}
+              {/* 💬 Suggestions */}
+              {suggestions.length > 0 && (
+                <ul className="absolute z-50 bg-white rounded-xl shadow-lg w-full mt-2 max-h-60 overflow-y-auto">
+                  {suggestions.map((p) => (
+                    <li
+                      key={p.id}
+                      onClick={() => {
+                        setSearchTerm(p.title);
+                        performSearch(p.title);
+                        setSuggestions([]);
+                      }}
+                      className="p-2 hover:bg-gray-100 cursor-pointer"
+                    >
+                      {p.title}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </form>
+          </div>
         </div>
       </div>
     {!isSearchActive && (
@@ -830,6 +827,8 @@ export default function HomePage() {
         </div>
       </section>
 
+      <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent my-8"></div>
+
         {/* 🧱 Subcategory Slider */}
           <h2
               id="subcategory-heading"
@@ -870,7 +869,8 @@ export default function HomePage() {
                 >
                   <div
                     className={`bg-gradient-to-br ${colorClass} w-[70px] h-[70px] flex items-center justify-center 
-                    rounded-2xl shadow-md hover:shadow-xl backdrop-blur-md bg-opacity-70 border border-white/40`}
+                      rounded-2xl shadow-md hover:shadow-xl backdrop-blur-xl bg-opacity-80 border border-white/60 
+                      transition-transform duration-300`}
                   >
                     <Icon size={28} strokeWidth={2.5} className="drop-shadow-md" />
                   </div>
@@ -898,7 +898,7 @@ export default function HomePage() {
             ? `Search Results`
             : `Our Featured Kitchen Products`}
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fadeIn">
         {displayProducts.length > 0 ? (
           displayProducts.map((p) => {
 
@@ -939,8 +939,8 @@ export default function HomePage() {
                 // ⚡ Optional: Hide loader flicker
                 setIsLoading(false);
               }}
-              className="relative bg-white rounded-2xl shadow-sm hover:shadow-2xl transition-all duration-300 
-                flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200"
+              className="relative bg-white/80 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 
+                flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200 hover:bg-white"
             >
               {/* 🏷️ Tag Badge */}
               {tag && (
@@ -1034,7 +1034,13 @@ export default function HomePage() {
           </div>
         </div>
       )}
-
+      <button
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className="fixed bottom-6 right-6 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-all duration-300"
+        aria-label="Back to top"
+      >
+        <ArrowUp size={24} />
+      </button>
     </main>
     </>
   );
