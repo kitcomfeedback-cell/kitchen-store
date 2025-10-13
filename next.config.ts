@@ -6,7 +6,12 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "content.public.markaz.app",
-        pathname: "/**", // ✅ Allow all image paths from this domain
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "www.shop.markaz.app",
+        pathname: "/**",
       },
     ],
   },

@@ -59,7 +59,7 @@ export default function ClientHeader() {
   // ✅ Dynamic class for border
   const headerClass = `
     sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm
-    ${pathname === "/" ? "pb-16 border-0" : "pb-0 border-b border-gray-100"}
+    ${pathname === "/" ? "pb-18 border-0" : "pb-0 border-b border-gray-100"}
   `;
 
   if (!isMounted) return null;

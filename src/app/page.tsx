@@ -9,6 +9,7 @@ import Link from "next/link";
 import { startTransition } from "react";
 import {
   ArrowLeft,
+  ArrowUp,
   X,
   Search,
   Utensils,
@@ -24,7 +25,6 @@ import {
   GlassWater,
   SoupIcon,
   Truck,
-  ArrowUp,
 } from "lucide-react";
 import Fuse from "fuse.js";
 import catalogData from "./data/catalog.json";
@@ -86,8 +86,19 @@ export default function HomePage() {
 
   /* ♻️ Restore scroll + search after products ready */
   useEffect(() => {
+    sessionStorage.removeItem("pendingScrollRestore");
     if (randomizedProducts.length === 0) return; // ⏳ Wait until loaded
     setIsLoading(true);
+    // ✅ Ensure scroll restoration always works (home + search)
+    const savedHomeY = sessionStorage.getItem("homeScrollY");
+    const savedSearchY = sessionStorage.getItem("searchScrollY");
+
+    if (savedHomeY && !sessionStorage.getItem("lastQuery")) {
+      restoreScrollY.current = Number(savedHomeY);
+    }
+    if (savedSearchY && sessionStorage.getItem("lastQuery")) {
+      restoreScrollY.current = Number(savedSearchY);
+    }
 
     const lastQuery = sessionStorage.getItem("lastQuery");
     const prefix = lastQuery ? "search" : "home";
@@ -128,25 +139,29 @@ export default function HomePage() {
     const savedFilter = sessionStorage.getItem("activeFilter");
     const savedBase = sessionStorage.getItem("baseFilteredProducts");
 
+    
     if (savedBase) {
-      const parsedBase = JSON.parse(savedBase);
-      setBaseFilteredProducts(parsedBase);
+    const parsedBase = JSON.parse(savedBase);
+    setBaseFilteredProducts(parsedBase);
 
-      let restoredProducts = parsedBase;
+    let restoredProducts = [...parsedBase];
 
-      // ✅ Restore active filter (sort order)
-      if (savedFilter) {
-        setActiveFilter(savedFilter);
+    const savedFilter = sessionStorage.getItem("activeFilter");
+    if (savedFilter) {
+      setActiveFilter(savedFilter);
+      const dropdown = document.querySelector("select");
+      if (dropdown) dropdown.value = savedFilter;
 
-        if (savedFilter === "high-low") {
-          restoredProducts = [...parsedBase].sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-        } else if (savedFilter === "low-high") {
-          restoredProducts = [...parsedBase].sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
-        } else if (savedFilter === "latest" || savedFilter === "new") {
-          restoredProducts = [...parsedBase].reverse();
-        }
+      // ✅ Re-apply the correct sort
+      if (savedFilter === "high-low") {
+        restoredProducts.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+      } else if (savedFilter === "low-high") {
+        restoredProducts.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+      } else if (savedFilter === "latest" || savedFilter === "new") {
+        restoredProducts.reverse();
       }
-
+    }
+    
       setFilteredProducts(restoredProducts);
       setDisplayProducts(restoredProducts);
       setVisibleCount(restoredProducts.length);
@@ -176,6 +191,7 @@ export default function HomePage() {
   const productsToShow = filteredProducts ?? randomizedProducts;
   // 🌀 Loading state for clicks/search/filter
   const [isLoading, setIsLoading] = useState(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     // ⚙️ Preload a few most visible product pages
@@ -200,14 +216,15 @@ export default function HomePage() {
 
   // ⚡️ Scroll to saved position once products are rendered
   useEffect(() => {
-  if (restoreScrollY.current != null && displayProducts.length > 0) {
-    const y = restoreScrollY.current;
-    restoreScrollY.current = null;
-    setTimeout(() => {
-      window.scrollTo({ top: y, behavior: "instant" }); // 🌀 smooth scroll restore
-    }, 50);
-  }
-}, [displayProducts]);
+    if (restoreScrollY.current != null && displayProducts.length > 0) {
+      const y = restoreScrollY.current;
+      restoreScrollY.current = null;
+      // ✅ wait a bit longer so images/layout are painted
+      setTimeout(() => {
+        window.scrollTo({ top: y, behavior: "instant" }); // correct value: "auto" or "smooth"
+      }, 150);
+    }
+  }, [displayProducts]);
 
   /* ♾️ Infinite Scroll */
   const handleScroll = useCallback(() => {
@@ -425,6 +442,27 @@ export default function HomePage() {
   const restoreScrollY = useRef<number | null>(null);
   const restoreVisible = useRef<number | null>(null);
 
+  // ✅ Always restore scroll AFTER page re-render (even after coming back from product)
+  useEffect(() => {
+    const savedY = sessionStorage.getItem(isSearchActive ? "searchScrollY" : "homeScrollY");
+    if (!savedY) return;
+
+    const y = Number(savedY);
+    let retries = 0;
+    const tryScroll = () => {
+      // wait until DOM + images are stable
+      if (document.readyState === "complete" && document.body.offsetHeight > y) {
+        window.scrollTo({ top: y, behavior: "instant" });
+        sessionStorage.removeItem("pendingScrollRestore");
+      } else if (retries < 20) {
+        retries++;
+        requestAnimationFrame(tryScroll);
+      }
+    };
+    requestAnimationFrame(tryScroll);
+  }, [displayProducts]);
+
+
   /* 🎞️ Promo Slides (Premium Styled) */
   const slides = [
     {
@@ -551,6 +589,19 @@ export default function HomePage() {
     };
   }, [isSearchActive, visibleCount]);
 
+  useEffect(() => {
+    const toggleVisibility = () => {
+      if (window.scrollY > 300) {
+        setVisible(true);
+      } else {
+        setVisible(false);
+      }
+    };
+
+    window.addEventListener("scroll", toggleVisibility);
+    return () => window.removeEventListener("scroll", toggleVisibility);
+  }, []);
+
   return (
     <>
     <Head>
@@ -589,7 +640,8 @@ export default function HomePage() {
 
       <main
         className="min-h-screen bg-gradient-to-br from-white via-blue-50/40 to-gray-100 
-           p-4 sm:p-6 md:p-8 mt-20 transition-all duration-300 ease-out"
+           p-4 transition-all duration-300 ease-out"
+
         role="main"
       >
       {/* 🏠 Main Heading */}
@@ -601,7 +653,7 @@ export default function HomePage() {
        <div
           className="fixed top-[72px] sm:top-[86px] z-[60] left-0 right-0 bg-transparent flex items-center justify-center"
         >
-        <div className="flex items-center w-full max-w-7xl p-2">
+        <div className="flex items-center w-full max-w-6xl p-2">
           {isSearchActive && (
             <button
               onClick={resetSearch}
@@ -611,13 +663,14 @@ export default function HomePage() {
               <ArrowLeft size={24} />
             </button>
           )}
-          <div className="w-full max-w-3xl px-3">
+
+          <div className="w-full max-w-8xl px-3">
             <form onSubmit={handleSubmit} className="relative group">
               <div className="absolute inset-0 bg-white/60 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-sm group-hover:shadow-lg transition-all"></div>
-              <Search
-                className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600 z-10"
-                size={22}
-              />
+                <Search
+                  className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600 z-10"
+                  size={22}
+                />
               <input
                 ref={inputRef}
                 type="text"
@@ -631,9 +684,13 @@ export default function HomePage() {
                     setSuggestions([]);
                   }
                 }}
-                className="relative w-full pl-12 pr-10 py-3 rounded-2xl bg-transparent border-none focus:ring-2 focus:ring-blue-300 text-gray-700 placeholder-gray-400 focus:outline-none transition-all"
+                className="w-full pl-12 pr-10 py-3 rounded-xl border-2 border-blue-400 
+                          backdrop-blur-sm shadow-sm focus:outline-none focus:ring-4 
+                          focus:ring-blue-300 focus:border-blue-500 focus:shadow-lg 
+                          transition duration-200"
               />
 
+              {/* ❌ Clear */}
               {searchTerm && (
                 <button
                   type="button"
@@ -642,11 +699,12 @@ export default function HomePage() {
                     setSuggestions([]);
                     inputRef.current?.focus();
                   }}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X size={20} />
                 </button>
               )}
+
               {/* 💬 Suggestions */}
               {suggestions.length > 0 && (
                 <ul className="absolute z-50 bg-white rounded-xl shadow-lg w-full mt-2 max-h-60 overflow-y-auto">
@@ -869,8 +927,7 @@ export default function HomePage() {
                 >
                   <div
                     className={`bg-gradient-to-br ${colorClass} w-[70px] h-[70px] flex items-center justify-center 
-                      rounded-2xl shadow-md hover:shadow-xl backdrop-blur-xl bg-opacity-80 border border-white/60 
-                      transition-transform duration-300`}
+                      rounded-2xl shadow-md hover:shadow-xl backdrop-blur-xl bg-opacity-80 border border-white/60 transition-transform duration-300`}
                   >
                     <Icon size={28} strokeWidth={2.5} className="drop-shadow-md" />
                   </div>
@@ -899,6 +956,7 @@ export default function HomePage() {
             : `Our Featured Kitchen Products`}
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fadeIn">
+
         {displayProducts.length > 0 ? (
           displayProducts.map((p) => {
 
@@ -927,17 +985,20 @@ export default function HomePage() {
               onMouseEnter={() => router.prefetch(`/product/${p.id}`)} // ⚡ Preload page on hover
               onTouchStart={() => router.prefetch(`/product/${p.id}`)} // ⚡ Preload on mobile tap
               onClick={() => {
-                // 🧠 Save session + scroll before navigating
-                const keyPrefix = isSearchActive ? "search" : "home";
+                const keyPrefix = filteredProducts ? "search" : "home";
                 sessionStorage.setItem(`${keyPrefix}ScrollY`, String(window.scrollY));
                 sessionStorage.setItem(`${keyPrefix}Visible`, String(visibleCount));
-                if (activeFilter) sessionStorage.setItem("activeFilter", activeFilter);
-                if (isSearchActive && searchTerm) {
+                sessionStorage.setItem("activeFilter", activeFilter);
+
+                if (filteredProducts && baseFilteredProducts) {
+                  sessionStorage.setItem("baseFilteredProducts", JSON.stringify(baseFilteredProducts));
+                }
+                if (searchTerm) {
                   sessionStorage.setItem("lastQuery", searchTerm);
                 }
 
-                // ⚡ Optional: Hide loader flicker
-                setIsLoading(false);
+                // ✅ Guarantee scroll restores properly next time
+                sessionStorage.setItem("pendingScrollRestore", "true");
               }}
               className="relative bg-white/80 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 
                 flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200 hover:bg-white"
@@ -1035,12 +1096,19 @@ export default function HomePage() {
         </div>
       )}
       <button
-        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-6 right-6 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-all duration-300"
-        aria-label="Back to top"
-      >
-        <ArrowUp size={24} />
-      </button>
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      className={`fixed bottom-6 right-6 z-50 p-3 rounded-full shadow-lg transition-all duration-300
+        ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10 pointer-events-none"}
+        bg-gradient-to-r from-blue-500 to-indigo-600 text-white
+        hover:from-blue-600 hover:to-indigo-700
+        hover:shadow-[0_0_15px_rgba(59,130,246,0.5)]
+        backdrop-blur-md border border-white/20
+      `}
+      aria-label="Back to top"
+    >
+      <ArrowUp size={22} strokeWidth={2.5} />
+    </button>
+
     </main>
     </>
   );
