@@ -53,6 +53,41 @@ function shuffleArray<T>(array: T[]): T[] {
 export default function HomePage() {
   /* 🧱 All Products (+50% price) */
   const router = useRouter(); // ✅ Needed for router.push()
+
+  // 🧭 Restore scroll only for the default randomized home (no query/search)
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const hasQuery = url.searchParams.size > 0;
+    if (hasQuery) return; // skip if it's a filtered/search page
+
+    const savedY = sessionStorage.getItem("homeScrollY");
+
+    // 🕓 Wait until all content is painted to avoid restoring too early
+    if (savedY) {
+      const restore = () => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: Number(savedY), behavior: "auto" });
+        });
+      };
+
+      // Restore after paint + short delay
+      requestAnimationFrame(() => {
+        setTimeout(restore, 100);
+      });
+    }
+
+    // ✅ Handle browser back/forward too
+    if (performance?.getEntriesByType) {
+      const entries = performance.getEntriesByType("navigation");
+      const navType = (entries[0] as PerformanceNavigationTiming)?.type;
+      if (navType === "back_forward" && savedY) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: Number(savedY), behavior: "auto" });
+        });
+      }
+    }
+  }, []);
+
   const allProducts: Product[] = useMemo(() => {
     const items: Product[] = [];
     for (const c of catalogData.categories || []) {
@@ -86,19 +121,8 @@ export default function HomePage() {
 
   /* ♻️ Restore scroll + search after products ready */
   useEffect(() => {
-    sessionStorage.removeItem("pendingScrollRestore");
     if (randomizedProducts.length === 0) return; // ⏳ Wait until loaded
     setIsLoading(true);
-    // ✅ Ensure scroll restoration always works (home + search)
-    const savedHomeY = sessionStorage.getItem("homeScrollY");
-    const savedSearchY = sessionStorage.getItem("searchScrollY");
-
-    if (savedHomeY && !sessionStorage.getItem("lastQuery")) {
-      restoreScrollY.current = Number(savedHomeY);
-    }
-    if (savedSearchY && sessionStorage.getItem("lastQuery")) {
-      restoreScrollY.current = Number(savedSearchY);
-    }
 
     const lastQuery = sessionStorage.getItem("lastQuery");
     const prefix = lastQuery ? "search" : "home";
@@ -139,29 +163,28 @@ export default function HomePage() {
     const savedFilter = sessionStorage.getItem("activeFilter");
     const savedBase = sessionStorage.getItem("baseFilteredProducts");
 
-    
     if (savedBase) {
-    const parsedBase = JSON.parse(savedBase);
-    setBaseFilteredProducts(parsedBase);
+      const parsedBase = JSON.parse(savedBase);
+      setBaseFilteredProducts(parsedBase);
 
-    let restoredProducts = [...parsedBase];
+      let restoredProducts = parsedBase;
 
-    const savedFilter = sessionStorage.getItem("activeFilter");
-    if (savedFilter) {
-      setActiveFilter(savedFilter);
-      const dropdown = document.querySelector("select");
-      if (dropdown) dropdown.value = savedFilter;
-
-      // ✅ Re-apply the correct sort
-      if (savedFilter === "high-low") {
-        restoredProducts.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-      } else if (savedFilter === "low-high") {
-        restoredProducts.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
-      } else if (savedFilter === "latest" || savedFilter === "new") {
-        restoredProducts.reverse();
+      // ✅ Restore active filter (sort order)
+      if (savedFilter) {
+        setActiveFilter(savedFilter);
+            const dropdown = document.querySelector('select');
+              if (dropdown) {
+                dropdown.value = savedFilter;
+              }
+        if (savedFilter === "high-low") {
+          restoredProducts = [...parsedBase].sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+        } else if (savedFilter === "low-high") {
+          restoredProducts = [...parsedBase].sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+        } else if (savedFilter === "latest" || savedFilter === "new") {
+          restoredProducts = [...parsedBase].reverse();
+        }
       }
-    }
-    
+
       setFilteredProducts(restoredProducts);
       setDisplayProducts(restoredProducts);
       setVisibleCount(restoredProducts.length);
@@ -194,11 +217,11 @@ export default function HomePage() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // ⚙️ Preload a few most visible product pages
-    randomizedProducts.slice(0, 10).forEach(p => {
+    // Prefetch all visible products (speeds up navigation)
+    displayProducts.slice(0, 40).forEach(p => {
       router.prefetch(`/product/${p.id}`);
     });
-  }, [randomizedProducts]);
+  }, [displayProducts]);
 
   /* 🚀 Load initial 20 instantly */
   useEffect(() => {
@@ -214,15 +237,22 @@ export default function HomePage() {
       }
   }, [productsToShow, filteredProducts]);
 
-  // ⚡️ Scroll to saved position once products are rendered
+  // ⚡️ Scroll to saved position once products are rendered (precise restore)
   useEffect(() => {
     if (restoreScrollY.current != null && displayProducts.length > 0) {
       const y = restoreScrollY.current;
       restoreScrollY.current = null;
-      // ✅ wait a bit longer so images/layout are painted
-      setTimeout(() => {
-        window.scrollTo({ top: y, behavior: "instant" }); // correct value: "auto" or "smooth"
-      }, 150);
+
+      // Wait for the next few frames so layout fully stabilizes
+      const restoreScroll = () => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: y, behavior: "instant" });
+        });
+      };
+
+      // Try multiple times to ensure precise restore (helps with images lazy-loading)
+      const attempts = [100, 250, 500];
+      attempts.forEach(delay => setTimeout(restoreScroll, delay));
     }
   }, [displayProducts]);
 
@@ -325,10 +355,24 @@ export default function HomePage() {
       allMatched = [...allMatched, ...fillers];
     }
 
-    setFilteredProducts(allMatched);
+    // ✅ Restore any existing active filter from sessionStorage (search filter persistence)
+    const savedFilter = sessionStorage.getItem("activeFilter");
+
+    let finalResults = [...allMatched];
+    if (savedFilter === "high-low") {
+      finalResults.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+    } else if (savedFilter === "low-high") {
+      finalResults.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+    } else if (savedFilter === "latest" || savedFilter === "new") {
+      finalResults.reverse();
+    }
+
+    // ✅ Apply results and persist
+    setFilteredProducts(finalResults);
     setBaseFilteredProducts(allMatched);
-    setDisplayProducts(allMatched);
-    setVisibleCount(allMatched.length);
+    setDisplayProducts(finalResults);
+    setVisibleCount(finalResults.length);
+
     setSuggestions([]);
     setSearchTerm(term);
     inputRef.current?.blur();
@@ -441,27 +485,6 @@ export default function HomePage() {
     // 🧭 Flags for restoring scroll
   const restoreScrollY = useRef<number | null>(null);
   const restoreVisible = useRef<number | null>(null);
-
-  // ✅ Always restore scroll AFTER page re-render (even after coming back from product)
-  useEffect(() => {
-    const savedY = sessionStorage.getItem(isSearchActive ? "searchScrollY" : "homeScrollY");
-    if (!savedY) return;
-
-    const y = Number(savedY);
-    let retries = 0;
-    const tryScroll = () => {
-      // wait until DOM + images are stable
-      if (document.readyState === "complete" && document.body.offsetHeight > y) {
-        window.scrollTo({ top: y, behavior: "instant" });
-        sessionStorage.removeItem("pendingScrollRestore");
-      } else if (retries < 20) {
-        retries++;
-        requestAnimationFrame(tryScroll);
-      }
-    };
-    requestAnimationFrame(tryScroll);
-  }, [displayProducts]);
-
 
   /* 🎞️ Promo Slides (Premium Styled) */
   const slides = [
@@ -600,6 +623,13 @@ export default function HomePage() {
 
     window.addEventListener("scroll", toggleVisibility);
     return () => window.removeEventListener("scroll", toggleVisibility);
+  }, []);
+
+  // 🚀 Speed boost: prevent re-render delay when coming back
+  useEffect(() => {
+    if (document.visibilityState === "visible") {
+      setIsLoading(false);
+    }
   }, []);
 
   return (
@@ -793,22 +823,29 @@ export default function HomePage() {
               sessionStorage.setItem("activeFilter", value);
               setIsLoading(true);
 
+              let sorted = [...(baseFilteredProducts ?? filteredProducts ?? displayProducts)];
+
               if (value === "best") {
+                // ✅ Restore default (unsorted) base
                 if (baseFilteredProducts) {
                   setDisplayProducts(baseFilteredProducts);
                   setFilteredProducts(baseFilteredProducts);
+                  sessionStorage.setItem("baseFilteredProducts", JSON.stringify(baseFilteredProducts));
                 }
                 setTimeout(() => setIsLoading(false), 200);
                 return;
               }
 
-              let sorted = [...(filteredProducts ?? displayProducts)];
               if (value === "high-low") sorted.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
               else if (value === "low-high") sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+              else if (value === "latest" || value === "new") sorted = [...sorted].reverse();
               else sorted = shuffleArray(sorted);
 
+              // ✅ Save and display the sorted results persistently
               setFilteredProducts(sorted);
               setDisplayProducts(sorted);
+              sessionStorage.setItem("baseFilteredProducts", JSON.stringify(sorted));
+
               setTimeout(() => setIsLoading(false), 200);
             }}
             value={activeFilter}
@@ -985,20 +1022,19 @@ export default function HomePage() {
               onMouseEnter={() => router.prefetch(`/product/${p.id}`)} // ⚡ Preload page on hover
               onTouchStart={() => router.prefetch(`/product/${p.id}`)} // ⚡ Preload on mobile tap
               onClick={() => {
-                const keyPrefix = filteredProducts ? "search" : "home";
+                // 🧠 Save session + scroll before navigating
+                const keyPrefix = isSearchActive ? "search" : "home";
+                sessionStorage.setItem("homeScrollY", String(window.scrollY));
                 sessionStorage.setItem(`${keyPrefix}ScrollY`, String(window.scrollY));
                 sessionStorage.setItem(`${keyPrefix}Visible`, String(visibleCount));
-                sessionStorage.setItem("activeFilter", activeFilter);
-
-                if (filteredProducts && baseFilteredProducts) {
-                  sessionStorage.setItem("baseFilteredProducts", JSON.stringify(baseFilteredProducts));
-                }
-                if (searchTerm) {
+                if (activeFilter) sessionStorage.setItem("activeFilter", activeFilter);
+                if (isSearchActive && searchTerm) {
                   sessionStorage.setItem("lastQuery", searchTerm);
+                  sessionStorage.setItem("baseFilteredProducts", JSON.stringify(baseFilteredProducts ?? []));
                 }
-
-                // ✅ Guarantee scroll restores properly next time
-                sessionStorage.setItem("pendingScrollRestore", "true");
+                // ⚡ Optional: Hide loader flicker
+                setIsLoading(false);
+                window.history.scrollRestoration = "manual";
               }}
               className="relative bg-white/80 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 
                 flex flex-col overflow-hidden border border-gray-100 hover:-translate-y-1 hover:border-blue-200 hover:bg-white"

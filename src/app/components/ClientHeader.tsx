@@ -1,3 +1,4 @@
+// src/app/components/ClientHeader.tsx
 "use client";
 
 import Link from "next/link";
@@ -16,6 +17,14 @@ export default function ClientHeader() {
 
   // ✅ Prevent hydration mismatch
   useEffect(() => setIsMounted(true), []);
+  useEffect(() => {
+  if (!isMounted) return;
+  // Prefetch critical routes on load
+  router.prefetch("/");
+  router.prefetch("/cart");
+  router.prefetch("/profile");
+}, [isMounted, router]);
+
 
   // 🛒 Update cart count
   const updateCartCount = () => {
@@ -43,7 +52,7 @@ export default function ClientHeader() {
 
     const triggerLoader = () => {
       setIsNavigating(true);
-      setTimeout(() => setIsNavigating(false), 600); // short, visible feedback
+      setTimeout(() => setIsNavigating(false), 100);
     };
 
     const handleClick = (e: MouseEvent) => {
@@ -106,7 +115,7 @@ export default function ClientHeader() {
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
           {/* Logo */}
             <motion.div whileTap={{ scale: 0.95 }}>
-              <Link href="/" className="flex items-center gap-2 group">
+              <Link href="/" prefetch={true} className="flex items-center gap-2 group">
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.9 }}
@@ -132,7 +141,7 @@ export default function ClientHeader() {
             {/* Cart */}
             <motion.div whileTap={{ scale: 0.9 }}>
               <Link
-                href="/cart"
+                href="/cart" prefetch={true}
                 className="relative flex items-center justify-center p-1.5 sm:p-2 rounded-full bg-blue-50 hover:bg-blue-100 transition"
               >
                 <ShoppingBag
@@ -163,7 +172,7 @@ export default function ClientHeader() {
             {/* Profile */}
             <motion.div whileTap={{ scale: 0.9 }}>
               <Link
-                href="/profile"
+                href="/profile" prefetch={true}
                 className="flex items-center justify-center p-1.5 sm:p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition"
               >
                 <UserRound

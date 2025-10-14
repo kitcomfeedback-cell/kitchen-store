@@ -1,3 +1,4 @@
+// src/app/layout.tsx
 
 import type { Metadata } from "next";
 import ClientHeader from "@/app/components/ClientHeader";
@@ -31,7 +32,8 @@ export default function RootLayout({
   
   
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth" className="will-change-transform">
+
       <body
           className={`${inter.className} ${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 text-gray-900`}
           >
