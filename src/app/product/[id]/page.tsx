@@ -344,7 +344,10 @@ const addToCart = (goCheckout = false) => {
 
       {/* 🔍 Fullscreen Lightbox with Slider */}
       {showGallery && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
+        <div
+          className="fixed top-0 left-0 w-screen h-screen z-50 bg-black/90 flex flex-col items-center justify-start overflow-hidden"
+          style={{ overscrollBehavior: "none" }}
+        >
           {/* ❌ Close Button */}
           <button
             onClick={() => setShowGallery(false)}
@@ -355,7 +358,7 @@ const addToCart = (goCheckout = false) => {
 
           {/* 🔄 Image Slider */}
           <div
-            className="relative w-full max-w-5xl overflow-hidden flex items-center justify-center"
+            className="relative w-full max-w-3xl overflow-hidden flex items-start justify-center mt-55"
             {...swipeHandlers}
           >
             <div
@@ -372,10 +375,11 @@ const addToCart = (goCheckout = false) => {
                   <Image
                     src={img}
                     alt={`Product image ${i + 1}`}
-                    width={1000}
-                    height={800}
-                    className="object-contain max-h-[90vh] rounded-lg"
+                    width={900}
+                    height={700}
+                    className="object-contain max-h-[75vh] rounded-lg mt-0"
                   />
+
                 </div>
               ))}
             </div>
