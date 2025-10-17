@@ -670,8 +670,7 @@ export default function HomePage() {
 
       <main
         className="min-h-screen bg-gradient-to-br from-white via-blue-50/40 to-gray-100 
-           p-4 transition-all duration-300 ease-out"
-
+           mt-25 p-2 transition-all duration-300 ease-out"
         role="main"
       >
       {/* 🏠 Main Heading */}
@@ -679,11 +678,11 @@ export default function HomePage() {
       <h1 className="sr-only">
         Premium Kitchen Store – Cookware, Utensils & Accessories
       </h1>
-      {/* 🔍 Search (Sticky Top) */}
+      {/* 🔍 Search (fixed Top) */}
        <div
-          className="fixed top-[72px] sm:top-[86px] z-[60] left-0 right-0 bg-transparent flex items-center justify-center"
+          className="fixed top-[72px] sm:top-[86px] z-[30] left-0 right-0 bg-transparent mt-6 flex items-center justify-center"
         >
-        <div className="flex items-center w-full max-w-6xl p-2">
+        <div className="flex items-center w-full max-w-7xl p-2">
           {isSearchActive && (
             <button
               onClick={resetSearch}
@@ -1133,7 +1132,7 @@ export default function HomePage() {
       )}
       <button
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className={`fixed bottom-6 right-6 z-50 p-3 rounded-full shadow-lg transition-all duration-300
+      className={`sticky bottom-6 left-100 sm:left-2 z-60 p-3 rounded-full shadow-lg transition-all duration-300
         ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10 pointer-events-none"}
         bg-gradient-to-r from-blue-500 to-indigo-600 text-white
         hover:from-blue-600 hover:to-indigo-700

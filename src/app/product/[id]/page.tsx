@@ -195,7 +195,6 @@ export default function ProductPage() {
   const basePrice = (product.price || 0) * 1.5;
   const displayPrice = Math.round(basePrice * (1 - discount));
 
-
 const addToCart = (goCheckout = false) => {
   if (!product) return;
 
@@ -434,18 +433,30 @@ const addToCart = (goCheckout = false) => {
         <div className="flex items-center space-x-3 mb-2">
           {product.price && (
             <>
-              {discount > 0 && (
-                <span className="text-gray-400 line-through text-sm">
-                  PKR {product.price.toLocaleString()}
-                </span>
-              )}
-              <span className="text-2xl font-bold text-blue-600">
-                PKR {displayPrice.toLocaleString()}
-              </span>
-              {discount > 0 && (
-                <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-semibold">
-                  -{(discount * 100).toFixed(0)}%
-                </span>
+              {appliedCoupon ? (
+                <>
+                  {/* Show inflated 50% price crossed out */}
+                  <span className="text-gray-400 line-through text-lg">
+                    PKR {(product.price * 1.5).toLocaleString()}
+                  </span>
+
+                  {/* Show discounted (20% off) final price */}
+                  <span className="text-2xl font-bold text-blue-600">
+                    PKR {displayPrice.toLocaleString()}
+                  </span>
+
+                  {/* Discount label */}
+                  <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-semibold">
+                    -{(discount * 100).toFixed(0)}%
+                  </span>
+                </>
+              ) : (
+                <>
+                  {/* When no coupon, just show original price normally */}
+                  <span className="text-2xl font-bold text-blue-600">
+                    PKR {(product.price * 1.5).toLocaleString()}
+                  </span>
+                </>
               )}
             </>
           )}
