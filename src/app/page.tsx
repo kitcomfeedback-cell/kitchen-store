@@ -670,7 +670,7 @@ export default function HomePage() {
 
       <main
         className="min-h-screen bg-gradient-to-br from-white via-blue-50/40 to-gray-100 
-           mt-25 p-2 transition-all duration-300 ease-out"
+           mt-15 p-2 transition-all duration-300 ease-out"
         role="main"
       >
       {/* 🏠 Main Heading */}
@@ -680,7 +680,7 @@ export default function HomePage() {
       </h1>
       {/* 🔍 Search (fixed Top) */}
        <div
-          className="fixed top-[72px] sm:top-[86px] z-[30] left-0 right-0 bg-transparent mt-6 flex items-center justify-center"
+          className="fixed top-[72px] sm:top-[86px] z-[30] left-0 right-0 bg-transparent flex items-center justify-center"
         >
         <div className="flex items-center w-full max-w-7xl p-2">
           {isSearchActive && (

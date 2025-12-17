@@ -360,6 +360,25 @@ const selectedCount = selectedItems.length;
         )}
       </div>
 
+      {/* Checkout Summary Bar (NON-sticky) */}
+{items.length > 0 && (
+  <div className="mb-4 bg-white shadow p-4 rounded-xl border flex justify-between items-center">
+    <div className="text-base font-semibold">
+      Total ({selectedCount} items):{" "}
+      <span className="text-blue-600 font-bold">Rs {total}</span>
+    </div>
+
+    <button
+      onClick={submitOrder}
+      disabled={submitting || selectedCount === 0 || !profile?.email}
+      className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium shadow hover:scale-105 transition disabled:opacity-50"
+    >
+      {submitting ? "Submitting…" : "Place Order"}
+    </button>
+  </div>
+)}
+
+
       {/* Select all */}
       {items.length > 0 && (
         <div className="flex items-center gap-3 mb-4 bg-white p-3 rounded-xl shadow border">
@@ -512,31 +531,6 @@ const selectedCount = selectedItems.length;
         ))}
       </div>
 
-
-      {/* Sticky Checkout Bar */}
-      <AnimatePresence>
-        {items.length > 0 && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 200, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed bottom-0 pb-8 z-10 p-4 left-0 right-0 bg-white shadow-lg p-3 border-t flex justify-between items-center"
-          >
-            <div className="text-base font-semibold">
-              Total ({selectedCount} items):{" "}
-              <span className="text-blue-600 font-bold">Rs {total}</span>
-            </div>
-            <button
-              onClick={submitOrder}
-              disabled={ submitting || selectedCount === 0 || !profile?.email /* 🔒 block checkout if not logged in */ }
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium shadow hover:scale-105 transition disabled:opacity-50"
-            >
-              {submitting ? "Submitting…" : "Place Order"}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

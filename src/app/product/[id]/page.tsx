@@ -163,20 +163,25 @@ export default function ProductPage() {
   if (images.length === 0) images.push("/placeholder.png");
 
 
-  // ⬇️ Replace your entire applyCoupon function with this one
   const applyCoupon = () => {
     const validCoupons: Record<string, number> = {
       SAVE20: 0.2,
     };
 
-    if ((product.price || 0) < 599) {
-      setCouponError("Coupons only apply for orders above Rs.599");
+    // ✅ Step 1: calculate increased price
+    const increasedPrice = (product?.price || 0) * 1.5;
+
+    // ✅ Step 2: eligibility check on increased price
+    if (increasedPrice < 599) {
+      setCouponError("Coupons apply only on orders above Rs. 599");
       setAppliedCoupon(null);
       return;
     }
 
-    if (validCoupons[coupon.toUpperCase()]) {
-      setAppliedCoupon(coupon.toUpperCase());
+    // ✅ Step 3: validate coupon
+    const code = coupon.toUpperCase();
+    if (validCoupons[code]) {
+      setAppliedCoupon(code);
       setCouponError("");
     } else {
       setAppliedCoupon(null);
@@ -184,16 +189,14 @@ export default function ProductPage() {
     }
   };
 
-  const discount =
-    appliedCoupon && appliedCoupon === "SAVE10"
-      ? 0.1
-      : appliedCoupon === "SAVE20"
-      ? 0.2
-      : 0;
+const basePrice = (product.price || 0) * 1.5;
 
-  // Default rule: increase base price by 50%, then apply discount
-  const basePrice = (product.price || 0) * 1.5;
-  const displayPrice = Math.round(basePrice * (1 - discount));
+const discount =
+  appliedCoupon === "SAVE20" && basePrice >= 599
+    ? 0.2
+    : 0;
+
+const displayPrice = Math.round(basePrice * (1 - discount));
 
 const addToCart = (goCheckout = false) => {
   if (!product) return;
