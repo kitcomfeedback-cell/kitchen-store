@@ -46,7 +46,10 @@ export default function RootLayout({
         {/* ⚡ Footer (optional premium look) */}
         <footer className="bg-white/70 backdrop-blur-md border-t border-gray-100 py-4 mt-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-8 text-center text-sm text-gray-500">
-            © {new Date().getFullYear()} Kitchenary — All Rights Reserved.
+            © {new Date().getFullYear()} Kitchenary — All Rights Reserved. &nbsp;
+                          <a href="/privacy-terms" className="text-sm text-blue-600 underline hover:text-blue-900">
+                 Privacy & Terms
+              </a>
           </div>
         </footer>
       </body>

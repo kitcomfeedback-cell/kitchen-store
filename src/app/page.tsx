@@ -668,20 +668,12 @@ export default function HomePage() {
       {/* <meta name="google-adsense-account" content="ca-pub-XXXXXXXXX" /> */}
     </Head>
 
-      <main
-        className="min-h-screen bg-gradient-to-br from-white via-blue-50/40 to-gray-100 
-           mt-15 p-2 transition-all duration-300 ease-out"
-        role="main"
-      >
-      {/* 🏠 Main Heading */}
-      <div className="max-w-7xl mx-auto space-y-8">
-      <h1 className="sr-only">
-        Premium Kitchen Store – Cookware, Utensils & Accessories
-      </h1>
-      {/* 🔍 Search (fixed Top) */}
+    {/* 🔍 Search (fixed Top) */}
        <div
-          className="fixed top-[72px] sm:top-[86px] z-[30] left-0 right-0 bg-transparent flex items-center justify-center"
+          className="sticky top-[60px] sm:top-[80px] z-[99] mt-[-70] bg-transparent flex items-center justify-center transform-none"
+          style={{ position: "sticky", transform: "none" }}
         >
+
         <div className="flex items-center w-full max-w-7xl p-2">
           {isSearchActive && (
             <button
@@ -756,6 +748,19 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      <main
+        className="min-h-screen bg-gradient-to-br from-white via-blue-50/40 to-gray-100 
+          pt-[10px] sm:pt-[10px] p-2 transition-all duration-300 ease-out"
+        role="main"
+      >
+
+      {/* 🏠 Main Heading */}
+      <div className="max-w-7xl mx-auto space-y-8">
+      <h1 className="sr-only">
+        Premium Kitchen Store – Cookware, Utensils & Accessories
+      </h1>
+      
     {!isSearchActive && (
       <>
      {/* 💰 Price Range Pills */}

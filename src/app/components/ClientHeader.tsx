@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ShoppingBag, UserRound, UtensilsCrossed } from "lucide-react";
+import { ShoppingBag, UserRound, UtensilsCrossed, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ClientHeader() {
@@ -68,7 +68,7 @@ export default function ClientHeader() {
   // ✅ Dynamic class for border
   const headerClass = `
     sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm
-    ${pathname === "/" ? "" : "pb-0 border-b border-gray-100"}
+    ${pathname === "/" ? "pb-15" : "pb-0 border-b border-gray-100"}
   `;
   // "pb-18 border-0"
 
@@ -139,6 +139,19 @@ export default function ClientHeader() {
 
           {/* Icons */}
           <div className="flex items-center gap-3 sm:gap-4">
+
+            {/* 📥 Download APK */}
+            <motion.div whileTap={{ scale: 0.9 }}>
+              <a
+                href="/apk/Kitchenary.apk"
+                download
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition"
+              >
+                <Download size={18} />
+                <span className="hidden sm:inline">Download App</span>
+              </a>
+            </motion.div>
+
             {/* Cart */}
             <motion.div whileTap={{ scale: 0.9 }}>
               <Link
