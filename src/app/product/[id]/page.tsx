@@ -743,7 +743,7 @@ const addToCart = (goCheckout = false) => {
                   />
                   <p className="text-sm font-medium line-clamp-2">{p.title}</p>
                   <p className="text-blue-600 text-sm font-semibold mt-1">
-                    PKR {p.price?.toLocaleString()}
+                    PKR {Math.round((p.price || 0) * 1.5).toLocaleString()}
                   </p>
                 </a>
               ))}
