@@ -172,7 +172,7 @@ export default function ProductPage() {
     const increasedPrice = (product?.price || 0) * 1.5;
 
     // ✅ Step 2: eligibility check on increased price
-    if (increasedPrice < 599) {
+    if (increasedPrice <= 599) {
       setCouponError("Coupons apply only on orders above Rs. 599");
       setAppliedCoupon(null);
       return;
@@ -468,7 +468,7 @@ const addToCart = (goCheckout = false) => {
         {/* 🚚 Delivery Charges */}
         <p className="text-sm text-gray-600 mb-4">
           Delivery Charges:{" "}
-          {displayPrice < 599 ? (
+          {displayPrice <= 599 ? (
             <span className="font-semibold text-red-500">Rs.100</span>
           ) : (
             <span className="font-semibold text-green-600">Free</span>
