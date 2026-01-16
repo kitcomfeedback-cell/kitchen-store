@@ -120,12 +120,14 @@ const selectedCount = selectedItems.length;
     const next = items.map((it) => {
         if (it.id === id) {
         const newQty = Math.max(1, it.qty + d);
-        const basePrice = it.price;
+        
+        const inflated = it.meta?.original_price ?? it.price;
+        const discountPerUnit = it.meta?.discount_amount_per_unit ?? 0;
         const delivery = it.meta?.delivery_charge ?? 0;
-        const discount = it.meta?.discount_amount_per_unit ?? 0;
+        const unitFinalPrice = inflated - discountPerUnit;
+        const subtotal = unitFinalPrice * newQty;
+        const total_with_delivery = subtotal + delivery;
 
-        const subtotal = basePrice * newQty;
-        const total_with_delivery = subtotal + delivery - discount * newQty;
 
         return {
             ...it,

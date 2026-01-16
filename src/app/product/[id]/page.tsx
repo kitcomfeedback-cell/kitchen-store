@@ -220,6 +220,7 @@ const addToCart = (goCheckout = false) => {
 
   const subtotal = unitPrice * quantity;
   const deliveryCharge = subtotal < 600 ? 100 : 0;
+  const inflatedPrice = Math.round((product.price || 0) * 1.5);
 
   // ✅ Build the cart item
   const item = {
@@ -233,14 +234,17 @@ const addToCart = (goCheckout = false) => {
     color: selectedColor || null,
     category: product.category || null,
     subcategory: product.subcategory || null,
+
     meta: {
-      original_price: product.price || 0,
+      original_price: inflatedPrice, // ✅ FIXED
       coupon: appliedCoupon || null,
       discount_pct: discount * 100,
+      discount_amount_per_unit: inflatedPrice - unitPrice, // ✅ important
       delivery_charge: deliveryCharge,
       subtotal,
       total_with_delivery: subtotal + deliveryCharge,
     },
+
   };
 
   // ✅ Add or update cart
