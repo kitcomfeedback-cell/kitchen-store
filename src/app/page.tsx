@@ -234,6 +234,9 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [visible, setVisible] = useState(false);
 
+
+  const [activeSubcategory, setActiveSubcategory] = useState<string | null>(null);
+
   useEffect(() => {
     // Prefetch all visible products (speeds up navigation)
     displayProducts.slice(0, 40).forEach(p => {
@@ -304,7 +307,7 @@ export default function HomePage() {
   /* 💡 Fuzzy Suggestions */
   useEffect(() => {
     const term = debouncedSearchTerm.trim().toLowerCase();
-    if (!term || filteredProducts !== null) {
+    if (!term || filteredProducts !== null || activeSubcategory) {
       setSuggestions([]);
       return;
     }
@@ -403,6 +406,39 @@ export default function HomePage() {
     setTimeout(() => setIsLoading(false), 150);
   };
 
+  const performSubcategorySearch = async (term: string) => {
+    const query = term.trim().toLowerCase();
+    if (!query || !baseFilteredProducts) return;
+
+    setIsLoading(true);
+
+    await new Promise(r => setTimeout(r, 50));
+
+    const fuse = new Fuse(baseFilteredProducts, {
+      keys: [
+        { name: "title", weight: 0.8 },
+        { name: "description", weight: 0.2 },
+      ],
+      threshold: 0.4, // tighter = more precise
+    });
+
+    const results = fuse.search(query).map(r => r.item);
+
+    setFilteredProducts(results);
+    setDisplayProducts(results);
+    setVisibleCount(results.length);
+    setSearchTerm(term);
+
+    sessionStorage.setItem("lastQuery", term);
+
+    window.history.pushState(
+      { search: true },
+      "",
+      `?subcategory=${encodeURIComponent(activeSubcategory!)}&search=${encodeURIComponent(term)}`
+    );
+
+    setTimeout(() => setIsLoading(false), 150);
+  };
 
   const normalizeAndValidateProduct = (p: any) => {
     const price =
@@ -430,6 +466,7 @@ export default function HomePage() {
   /* 🎯 Filter by Subcategory (Show exactly all products under it, with +50% price) */
   const filterByCategory = (subcategoryName: string) => {
     setIsLoading(true);
+    setActiveSubcategory(subcategoryName);
     const matchedSub = catalogData.categories
       ?.flatMap((c: any) => c.subcategories || [])
       ?.find((s: any) => s.name?.toLowerCase() === subcategoryName.toLowerCase());
@@ -447,7 +484,7 @@ export default function HomePage() {
     setDisplayProducts(matchedProducts);
     setVisibleCount(matchedProducts.length);
     setSuggestions([]);
-    setSearchTerm(subcategoryName);
+    setSearchTerm("");
     inputRef.current?.blur();
 
     window.history.pushState(
@@ -500,6 +537,7 @@ export default function HomePage() {
     setTimeout(() => setIsLoading(false), 200);
     setSearchTerm("");
     setFilteredProducts(null);
+    setActiveSubcategory(null);
     setSuggestions([]);
     setDisplayProducts(randomizedProducts.slice(0, 20));
     setVisibleCount(20);
@@ -515,7 +553,12 @@ export default function HomePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    performSearch(searchTerm);
+
+    if (activeSubcategory) {
+      performSubcategorySearch(searchTerm);
+    } else {
+      performSearch(searchTerm);
+    }
   };
 
   const formatPrice = (price?: number | null, currency?: string | null) =>
@@ -735,16 +778,36 @@ export default function HomePage() {
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Search kitchen products..."
+                placeholder={
+                  activeSubcategory
+                    ? `Search in ${activeSubcategory}...`
+                    : "Search kitchen products..."
+                }
                 value={searchTerm}
                 onChange={(e) => {
                   const val = e.target.value;
                   setSearchTerm(val);
-                  if (val === "") {
-                    setFilteredProducts(null);
-                    setSuggestions([]);
+
+                  if (activeSubcategory) {
+                    if (val === "") {
+                      // show all products of the subcategory
+                      setFilteredProducts(baseFilteredProducts);
+                      setDisplayProducts(baseFilteredProducts ?? []);
+                      setVisibleCount(baseFilteredProducts?.length ?? 0);
+                      setSuggestions([]);
+                    } else {
+                      // perform search in subcategory
+                      performSubcategorySearch(val);
+                    }
+                  } else {
+                    // global search
+                    if (val === "") {
+                      setFilteredProducts(null);
+                      setSuggestions([]);
+                    }
                   }
                 }}
+
                 className="w-full pl-12 pr-10 py-3 rounded-xl border-2 border-blue-400 
                           backdrop-blur-sm shadow-sm focus:outline-none focus:ring-4 
                           focus:ring-blue-300 focus:border-blue-500 focus:shadow-lg 
@@ -855,7 +918,7 @@ export default function HomePage() {
       {isSearchActive && filteredProducts && (
         <>
         <p className="text-center text-sm text-gray-600 mb-4">
-          Showing <span className="font-semibold">{filteredProducts.length}</span> results for <span className="font-semibold">"{searchTerm}"</span>
+          Showing <span className="font-semibold">{filteredProducts.length}</span> results for <span className="font-semibold">"{searchTerm || activeSubcategory}"</span>
         </p>
         
         {/* 🔽 Modern Filter Dropdown (Mobile Safe) */}
