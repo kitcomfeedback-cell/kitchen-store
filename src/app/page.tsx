@@ -555,9 +555,14 @@ export default function HomePage() {
     e.preventDefault();
 
     if (activeSubcategory) {
-      performSubcategorySearch(searchTerm);
+      performSubcategorySearch(searchTerm).then(() => {
+        // Close keyboard on mobile
+        inputRef.current?.blur();
+      });
     } else {
-      performSearch(searchTerm);
+      performSearch(searchTerm).then(() => {
+        inputRef.current?.blur();
+      });
     }
   };
 
