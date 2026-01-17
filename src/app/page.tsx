@@ -403,6 +403,30 @@ export default function HomePage() {
     setTimeout(() => setIsLoading(false), 150);
   };
 
+
+  const normalizeAndValidateProduct = (p: any) => {
+    const price =
+      typeof p.price === "number" && p.price > 0
+        ? Math.round(p.price * 1.5)
+        : null;
+
+    if (!price || price <= 0) return null;
+
+    if (
+      !p.image ||
+      p.image.trim() === "" ||
+      p.image.includes("placeholder")
+    ) return null;
+
+    return {
+      ...p,
+      price,
+      currency: p.currency ?? "PKR",
+      image: p.image,
+    };
+  };
+
+
   /* 🎯 Filter by Subcategory (Show exactly all products under it, with +50% price) */
   const filterByCategory = (subcategoryName: string) => {
     setIsLoading(true);
@@ -410,14 +434,12 @@ export default function HomePage() {
       ?.flatMap((c: any) => c.subcategories || [])
       ?.find((s: any) => s.name?.toLowerCase() === subcategoryName.toLowerCase());
 
-    // ✅ Apply +50% price increase here too
+    
     const matchedProducts =
-      matchedSub?.products?.map((p: any) => ({
-        ...p,
-        price: typeof p.price === "number" ? Math.round(p.price * 1.5) : null,
-        currency: p.currency ?? "PKR",
-        image: p.image ?? null,
-      })) || [];
+      matchedSub?.products
+        ?.map(normalizeAndValidateProduct)
+        .filter(Boolean) || [];
+
 
     setFilteredProducts(matchedProducts);
     setBaseFilteredProducts(matchedProducts);
