@@ -90,19 +90,37 @@ export default function HomePage() {
 
   const allProducts: Product[] = useMemo(() => {
     const items: Product[] = [];
+
     for (const c of catalogData.categories || []) {
       for (const s of c.subcategories || []) {
         for (const p of s.products || []) {
-          const price = typeof p.price === "number" ? Math.round(p.price * 1.5) : null;
+
+          // ✅ Normalize price
+          const price =
+            typeof p.price === "number" && p.price > 0
+              ? Math.round(p.price * 1.5)
+              : null;
+
+          // ❌ Skip invalid price
+          if (!price || price <= 0) continue;
+
+          // ❌ Skip missing / placeholder image
+          if (
+            !p.image ||
+            p.image.trim() === "" ||
+            p.image.includes("placeholder")
+          ) continue;
+
           items.push({
             ...p,
             price,
             currency: p.currency ?? "PKR",
-            image: p.image ?? null,
+            image: p.image,
           });
         }
       }
     }
+
     return items;
   }, []);
 
@@ -424,7 +442,7 @@ export default function HomePage() {
     setIsLoading(true);
 
     const matchedProducts = randomizedProducts.filter(
-      (p) => (p.price ?? 0) >= min && (p.price ?? 0) <= max
+      (p) => p.price != null && p.price >= min && p.price <= max && (p.price ?? 0) <= max
     );
 
     setFilteredProducts(matchedProducts);

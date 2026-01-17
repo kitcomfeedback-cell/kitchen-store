@@ -86,8 +86,32 @@ export default function ProductPage() {
 
     // Get all products
     const allProducts = catalogData.categories
-        .flatMap((c: any) => c.subcategories)
-        .flatMap((s: any) => s.products);
+    .flatMap((c: any) =>
+      (c.subcategories || []).flatMap((s: any) =>
+        (s.products || []).map((p: any) => ({
+          ...p,
+          category: c.name,
+          subcategory: s.name,
+          price:
+            typeof p.price === "number" && p.price > 0
+              ? p.price
+              : null,
+          image:
+            p.image &&
+            !p.image.includes("placeholder") &&
+            !p.image.endsWith(".svg")
+              ? p.image
+              : null,
+        }))
+      )
+    )
+    // 🚫 HARD FILTER (THIS FIXES EVERYTHING)
+    .filter(
+      (p: any) =>
+        p.price !== null &&
+        p.price > 0 &&
+        p.image !== null
+    );
 
     // 1️⃣ Try products in same subcategory
     let related = allProducts.filter(
@@ -734,7 +758,8 @@ const addToCart = (goCheckout = false) => {
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="mb-6">
             <div className="flex space-x-4 overflow-x-auto scrollbar-hide">
-              {relatedProducts.slice(i * 10, i * 10 + 10).map((p) => (
+              {relatedProducts 
+               .filter(p => p.price > 0 && p.image).slice(i * 10, i * 10 + 10).map((p) => (
                 <a
                   key={p.id}
                   href={`/product/${p.id}`}
@@ -744,10 +769,11 @@ const addToCart = (goCheckout = false) => {
                     src={p.image || "/placeholder.png"}
                     alt={p.title}
                     className="w-full h-24 object-cover rounded-lg mb-2"
+                    loading="lazy"
                   />
                   <p className="text-sm font-medium line-clamp-2">{p.title}</p>
                   <p className="text-blue-600 text-sm font-semibold mt-1">
-                    PKR {Math.round((p.price || 0) * 1.5).toLocaleString()}
+                    PKR {Math.round(p.price * 1.5).toLocaleString()}
                   </p>
                 </a>
               ))}
