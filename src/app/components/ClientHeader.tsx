@@ -140,7 +140,7 @@ export default function ClientHeader() {
           {/* Icons */}
           <div className="flex items-center gap-3 sm:gap-4">
 
-            {/* 📥 Download APK */}
+            {/* 📥 Download APK 
             <motion.div whileTap={{ scale: 0.9 }}>
               <a
                 href="/apk/Kitchenary.apk"
@@ -150,7 +150,7 @@ export default function ClientHeader() {
                 <Download size={18} />
                 <span className="hidden sm:inline">Download App</span>
               </a>
-            </motion.div>
+            </motion.div>*/}
 
             {/* Cart */}
             <motion.div whileTap={{ scale: 0.9 }}>
