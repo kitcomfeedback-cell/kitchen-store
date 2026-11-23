@@ -229,18 +229,24 @@ async function extractProduct(page, url, attempt = 1) {
         meta('meta[property="og:image"]'),
         meta('meta[name="twitter:image"]'),
         ...schemaImages.map((image) => typeof image === "string" ? image : image?.url || image?.contentUrl),
-        ...[...document.images]
-          .filter((img) =>
-            img.naturalWidth >= 120 && img.naturalHeight >= 120 &&
-            !/logo|avatar|icon|banner|placeholder/i.test(img.alt || "")
-          )
-          .map((img) => img.currentSrc || img.src),
+        ...[...document.querySelectorAll("img")].flatMap((img) => {
+          const sources = [
+            img.currentSrc,
+            img.src,
+            img.getAttribute("data-src"),
+            img.getAttribute("data-original"),
+            ...String(img.getAttribute("srcset") || "").split(",").map((part) => part.trim().split(/\\s+/)[0]),
+          ];
+          return sources.filter(Boolean);
+        }),
       ].filter((value) => {
         try {
           const candidate = new URL(value);
+          const isProductAsset = /\\/products\\//i.test(candidate.pathname);
           return candidate.protocol === "https:" &&
             ["static.markaz.app", "content.public.markaz.app", "www.shop.markaz.app"].includes(candidate.hostname) &&
-            !/logo|avatar|icon|banner|placeholder|\\.svg(?:$|\\?)/i.test(candidate.pathname);
+            (isProductAsset || /logo|avatar|icon|banner|placeholder/i.test(candidate.pathname) === false) &&
+            !/\\.svg(?:$|\\?)/i.test(candidate.pathname);
         } catch {
           return false;
         }
