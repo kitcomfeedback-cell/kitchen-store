@@ -235,18 +235,18 @@ async function extractProduct(page, url, attempt = 1) {
             img.src,
             img.getAttribute("data-src"),
             img.getAttribute("data-original"),
-            ...String(img.getAttribute("srcset") || "").split(",").map((part) => part.trim().split(/\\s+/)[0]),
+            ...String(img.getAttribute("srcset") || "").split(",").map((part) => part.trim().split(/\s+/)[0]),
           ];
           return sources.filter(Boolean);
         }),
       ].filter((value) => {
         try {
           const candidate = new URL(value);
-          const isProductAsset = /\\/products\\//i.test(candidate.pathname);
+          const isProductAsset = /\/products\//i.test(candidate.pathname);
           return candidate.protocol === "https:" &&
             ["static.markaz.app", "content.public.markaz.app", "www.shop.markaz.app"].includes(candidate.hostname) &&
             (isProductAsset || /logo|avatar|icon|banner|placeholder/i.test(candidate.pathname) === false) &&
-            !/\\.svg(?:$|\\?)/i.test(candidate.pathname);
+            !/\.svg(?:$|\?)/i.test(candidate.pathname);
         } catch {
           return false;
         }
