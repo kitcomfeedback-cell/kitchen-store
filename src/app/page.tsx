@@ -200,7 +200,9 @@ export default function HomePage() {
     const savedBase = sessionStorage.getItem("baseFilteredProducts");
 
     if (savedBase) {
-      const parsedBase = JSON.parse(savedBase);
+      const parsedBase = JSON.parse(savedBase).filter(
+        (p: Product) => hasUsableProductImage(p.image) && typeof p.price === "number" && p.price > 0
+      );
       setBaseFilteredProducts(parsedBase);
 
       let restoredProducts = parsedBase;
