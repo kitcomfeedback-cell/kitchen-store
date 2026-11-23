@@ -811,7 +811,19 @@ const addToCart = (goCheckout = false) => {
                     alt={p.title}
                     className="w-full h-24 object-cover rounded-lg mb-2"
                     loading="lazy"
-                    onError={() => setFailedRelatedIds((previous) => previous.includes(p.id) ? previous : [...previous, p.id])}
+                    onError={(event) => {
+                      const imageElement = event.currentTarget;
+                      const nextIndex = Number(imageElement.dataset.fallbackIndex || "0") + 1;
+                      const nextImage = p.images?.[nextIndex];
+                      if (nextImage) {
+                        imageElement.dataset.fallbackIndex = String(nextIndex);
+                        imageElement.src = nextImage;
+                        return;
+                      }
+                      setFailedRelatedIds((previous) =>
+                        previous.includes(p.id) ? previous : [...previous, p.id]
+                      );
+                    }}
                   />
                   <p className="text-sm font-medium line-clamp-2">{p.title}</p>
                   <p className="text-blue-600 text-sm font-semibold mt-1">
