@@ -91,6 +91,7 @@ export default function ProductPage() {
   const [couponError, setCouponError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<string[]>([]);
+  const [failedRelatedIds, setFailedRelatedIds] = useState<string[]>([]);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -780,6 +781,7 @@ const addToCart = (goCheckout = false) => {
                     alt={p.title}
                     className="w-full h-24 object-cover rounded-lg mb-2"
                     loading="lazy"
+                    onError={() => setFailedRelatedIds((previous) => previous.includes(p.id) ? previous : [...previous, p.id])}
                   />
                   <p className="text-sm font-medium line-clamp-2">{p.title}</p>
                   <p className="text-blue-600 text-sm font-semibold mt-1">
