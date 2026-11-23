@@ -12,6 +12,11 @@ const nextConfig = {
       },
       {
         protocol: "https",
+        hostname: "static.markaz.app",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
         hostname: "www.shop.markaz.app",
         pathname: "/**",
       },
