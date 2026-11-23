@@ -1,513 +1,428 @@
 // scripts/scrape.mjs
+// Markaz Kitchenware scraper. Keeps the catalogue schema consumed by the Next.js app.
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
-const BASE = "https://www.shop.markaz.app";
+const BASE = "https://www.markaz.app";
+const CATEGORY_URL = BASE + "/shop/home-page/Kitchenware";
 const OUT_PATH = path.resolve("src/app/data/catalog.json");
-const TMP_PATH = OUT_PATH + ".tmp";
+const CHECKPOINT_PATH = OUT_PATH + ".tmp";
+const PROGRESS_PATH = path.resolve("scripts/scrape_progress.json");
 
-/* ---------------- config ---------------- */
-const PARSE_CONCURRENCY = Number(process.env.PARSE_CONCURRENCY || "6");
-const MAX_PRODUCTS_PER_SUBCAT = Number(process.env.MAX_PRODUCTS_PER_SUBCAT || "0"); // 0 = unlimited
-const REFRESH_DAYS = Number(process.env.REFRESH_DAYS || "7");
+const PARSE_CONCURRENCY = Math.max(1, Number(process.env.PARSE_CONCURRENCY || 5));
+const REFRESH_DAYS = Math.max(0, Number(process.env.REFRESH_DAYS || 7));
+const MAX_PRODUCTS_PER_SUBCAT = Math.max(0, Number(process.env.MAX_PRODUCTS_PER_SUBCAT || 0));
+const NAV_TIMEOUT = 60000;
+const PRODUCT_PATH = "/shop/product/";
 
-/* ---------------- utils ---------------- */
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-function ensureDir(filePath) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+const nowIso = () => new Date().toISOString();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function ensureDir(file) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
 }
-function nowIso() {
-  return new Date().toISOString();
-}
-function daysBetween(aIso, bIso) {
+
+function readJson(file, fallback = null) {
   try {
-    const a = new Date(aIso).getTime();
-    const b = new Date(bIso).getTime();
-    return Math.abs((b - a) / (1000 * 60 * 60 * 24));
+    return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
-    return Infinity;
+    return fallback;
   }
 }
 
-/* ---------------- helpers ---------------- */
-function loadCheckpoint() {
-  if (fs.existsSync(TMP_PATH)) {
-    try {
-      return JSON.parse(fs.readFileSync(TMP_PATH, "utf8"));
-    } catch {
-      return null;
-    }
+function writeJsonAtomic(file, value) {
+  ensureDir(file);
+  const temp = file + "." + process.pid + ".writing";
+  fs.writeFileSync(temp, JSON.stringify(value, null, 2));
+  fs.renameSync(temp, file);
+}
+
+function ageInDays(value) {
+  const timestamp = Date.parse(value || "");
+  return Number.isFinite(timestamp) ? (Date.now() - timestamp) / 86400000 : Infinity;
+}
+
+function normalizeUrl(href, base) {
+  try {
+    const url = new URL(href, base);
+    if (url.origin !== BASE || !url.pathname.startsWith(PRODUCT_PATH)) return null;
+    url.hash = "";
+    url.search = "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function loadPrevious() {
-  if (fs.existsSync(OUT_PATH)) {
-    try {
-      return JSON.parse(fs.readFileSync(OUT_PATH, "utf8"));
-    } catch {
-      return null;
-    }
+function productIdFromUrl(url) {
+  try {
+    return new URL(url).pathname.split("/").filter(Boolean).at(-1) || url;
+  } catch {
+    return url;
   }
-  return null;
 }
 
-function saveCheckpoint(out) {
-  ensureDir(TMP_PATH);
-  fs.writeFileSync(TMP_PATH, JSON.stringify(out, null, 2));
-}
-
-async function mapLimitWithProgress(items, limit, worker, label = "Work") {
-  const out = new Array(items.length);
-  let i = 0;
-  let completed = 0;
-  const running = new Set();
-
-  async function runOne(idx) {
-    try {
-      out[idx] = await worker(items[idx], idx);
-    } catch {
-      out[idx] = null;
-    } finally {
-      completed++;
-      if (completed % 25 === 0 || completed === items.length) {
-        console.log(`🕵️ ${label} ${completed}/${items.length}`);
-      }
-      running.delete(idx);
-      if (i < items.length) {
-        const next = i++;
-        running.add(next);
-        void runOne(next);
+function loadExistingProducts(catalog) {
+  const map = new Map();
+  for (const category of catalog?.categories || []) {
+    for (const subcategory of category.subcategories || []) {
+      for (const product of subcategory.products || []) {
+        if (product?.link) map.set(product.link, product);
       }
     }
   }
-
-  while (i < Math.min(limit, items.length)) {
-    const idx = i++;
-    running.add(idx);
-    void runOne(idx);
-  }
-  while (running.size) await sleep(30);
-  return out;
+  return map;
 }
 
-async function primePage(page, rounds = 2, pauseMs = 600) {
-  for (let i = 0; i < rounds; i++) {
-    await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await page.waitForTimeout(pauseMs);
-  }
+async function waitForListing(page) {
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await page.waitForTimeout(1200);
+  await page.waitForSelector('a[href*="' + PRODUCT_PATH + '"]', { timeout: 15000 }).catch(() => {});
 }
 
-/* ---------------- product helpers ---------------- */
-async function collectProductLinks(page) {
-  return await page.$$eval('a[href*="/explore/product"]', (as) => {
-    const seen = new Set();
-    const out = [];
-    for (const a of as) {
-      const raw = a.getAttribute("href") || a.href || "";
+async function getListingLinks(page) {
+  return page.$$eval('a[href*="' + PRODUCT_PATH + '"]', (anchors) => {
+    const found = new Set();
+    for (const anchor of anchors) {
+      const raw = anchor.getAttribute("href") || anchor.href;
       if (!raw) continue;
-      let abs = raw;
       try {
-        abs = new URL(raw, location.href).href;
-      } catch {}
-      try {
-        const u = new URL(abs, location.href);
-        const key = u.pathname;
-        if (!seen.has(key)) {
-          seen.add(key);
-          out.push(u.href);
-        }
+        const url = new URL(raw, location.href);
+        if (url.origin !== location.origin || !url.pathname.startsWith("/shop/product/")) continue;
+        url.search = "";
+        url.hash = "";
+        found.add(url.href.replace(/\/$/, ""));
       } catch {}
     }
-    return out;
+    return [...found];
   });
 }
 
-async function infiniteScrollCollect(
-  page,
-  { maxRounds = 2000, stepPause = 700, stableThreshold = 6 } = {}
-) {
-  const seen = new Set();
-  let lastTotal = 0;
-  let stable = 0;
-
-  for (let round = 1; round <= maxRounds; round++) {
-    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.9));
-    await page.waitForTimeout(stepPause);
-    const linksNow = await collectProductLinks(page);
-    for (const l of linksNow) seen.add(l);
-
-    const total = seen.size;
-    const delta = total - lastTotal;
-    console.log(`         📄 Scroll ${round}: +${delta} new, total ${total}`);
-
-    if (delta === 0) stable++;
-    else {
-      stable = 0;
-      lastTotal = total;
+async function getMaxPage(page) {
+  return page.$$eval('a[href*="page="]', (anchors) => {
+    let max = 1;
+    for (const anchor of anchors) {
+      try {
+        const url = new URL(anchor.href);
+        const n = Number(url.searchParams.get("page"));
+        if (Number.isInteger(n) && n > max) max = n;
+      } catch {}
     }
-    if (stable >= stableThreshold) break;
-  }
-  return Array.from(seen);
+    return max;
+  }).catch(() => 1);
 }
 
-async function extractAllProductLinks(page, subUrl) {
-  console.log(`         🌍 Visiting ${subUrl}`);
-  await page.goto(subUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(3000);
-  await primePage(page, 3, 800);
+async function scrollListing(page) {
+  let stableRounds = 0;
+  let previousCount = 0;
+  const all = new Set();
 
-  const seen = new Set();
-  let pageNum = 1;
-  let lastCount = 0;
-  let lastFirstHref = null;
+  for (let round = 0; round < 12 && stableRounds < 3; round++) {
+    for (const link of await getListingLinks(page)) all.add(link);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(650);
+    for (const link of await getListingLinks(page)) all.add(link);
 
-  while (true) {
-    console.log(`         📄 Page ${pageNum}`);
+    if (all.size === previousCount) stableRounds++;
+    else stableRounds = 0;
+    previousCount = all.size;
+  }
+  return [...all];
+}
 
-    // Collect product links on current page
-    const newLinks = await infiniteScrollCollect(page, { maxRounds: 10 });
-    for (const l of newLinks) seen.add(l);
+function pageUrlForNumber(subcategoryUrl, pageNumber) {
+  const url = new URL(subcategoryUrl);
+  if (pageNumber > 1) url.searchParams.set("page", String(pageNumber));
+  else url.searchParams.delete("page");
+  return url.href;
+}
 
-    const totalNow = seen.size;
-    console.log(`         🔗 Total collected so far: ${totalNow}`);
+async function collectSubcategoryProducts(page, subcategoryUrl) {
+  const links = new Set();
+  let maxPage = 1;
 
-    // ✅ Stop if same number of products as last round (no change)
-    if (totalNow === lastCount) {
-      console.log("         ⚠️ No new products found — assuming last page reached.");
-      break;
+  await page.goto(subcategoryUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+  await waitForListing(page);
+  maxPage = Math.max(maxPage, await getMaxPage(page));
+
+  for (let pageNumber = 1; pageNumber <= maxPage; pageNumber++) {
+    const target = pageUrlForNumber(subcategoryUrl, pageNumber);
+    if (page.url() !== target) {
+      await page.goto(target, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+      await waitForListing(page);
     }
 
-    // ✅ Capture first product link to detect page loops
-    const firstHref = await page
-      .$eval('a[href*="/explore/product"]', (el) => el.getAttribute("href"))
-      .catch(() => null);
+    for (const link of await scrollListing(page)) links.add(link);
+    const newlyDetectedMax = await getMaxPage(page);
+    if (newlyDetectedMax > maxPage) maxPage = newlyDetectedMax;
 
-    if (firstHref && firstHref === lastFirstHref) {
-      console.log("         ⚠️ Page content repeated — stopping pagination.");
-      break;
+    console.log("      Listing page " + pageNumber + "/" + maxPage + ": " + links.size + " unique products");
+  }
+
+  const result = [...links];
+  return MAX_PRODUCTS_PER_SUBCAT > 0 ? result.slice(0, MAX_PRODUCTS_PER_SUBCAT) : result;
+}
+
+async function discoverSubcategories(page) {
+  await page.goto(CATEGORY_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+  await page.waitForTimeout(1500);
+
+  return page.$$eval("a[href]", (anchors, categoryUrl) => {
+    const root = new URL(categoryUrl);
+    const rootPath = root.pathname.replace(/\/$/, "");
+    const found = new Map();
+
+    for (const anchor of anchors) {
+      try {
+        const url = new URL(anchor.getAttribute("href") || anchor.href, location.href);
+        if (url.origin !== root.origin) continue;
+        const path = url.pathname.replace(/\/$/, "");
+        if (!path.startsWith(rootPath + "/")) continue;
+
+        const remainder = path.slice(rootPath.length + 1);
+        if (!remainder || remainder.includes("/")) continue;
+
+        const name = decodeURIComponent(remainder);
+        if (!name || name.toLowerCase() === "kitchenware") continue;
+        url.search = "";
+        url.hash = "";
+        found.set(url.href, { name, url: url.href });
+      } catch {}
     }
+    return [...found.values()];
+  }, CATEGORY_URL);
+}
 
-    lastFirstHref = firstHref;
-    lastCount = totalNow;
+async function extractProduct(page, url, attempt = 1) {
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+    await page.waitForTimeout(800);
 
-    // 🔍 Try to locate next button
-    const nextSelectors = [
-      'a[aria-label="Next"]:not([aria-disabled="true"])',
-      'button[aria-label="Next"]:not([disabled])',
-      'a.pagination-next:not(.disabled)',
-      'button.pagination-next:not([disabled])',
-      'a[href*="page="]:not([aria-disabled="true"])',
-      'a:has-text("Next")',
-      'button:has-text("Next")',
-      'a:has-text(">")',
-      'a:has-text("›")',
-    ];
+    const extracted = await page.evaluate(() => {
+      const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const meta = (selector) => clean(document.querySelector(selector)?.getAttribute("content"));
+      const firstText = (selectors) => {
+        for (const selector of selectors) {
+          const value = clean(document.querySelector(selector)?.textContent);
+          if (value) return value;
+        }
+        return "";
+      };
 
-    let nextBtn = null;
-    for (const sel of nextSelectors) {
-      const btn = await page.$(sel);
-      if (btn) {
-        // Ensure it's visible & clickable
-        const visible = await btn.isVisible().catch(() => false);
-        const disabled =
-          (await btn.getAttribute("aria-disabled")) === "true" ||
-          (await btn.isDisabled?.().catch(() => false));
-        if (visible && !disabled) {
-          nextBtn = btn;
+      const queue = [];
+      for (const block of document.querySelectorAll('script[type="application/ld+json"]')) {
+        try {
+          const parsed = JSON.parse(block.textContent || "null");
+          if (Array.isArray(parsed)) queue.push(...parsed);
+          else if (parsed && Array.isArray(parsed["@graph"])) queue.push(...parsed["@graph"]);
+          else if (parsed) queue.push(parsed);
+        } catch {}
+      }
+
+      let schema = null;
+      for (const item of queue) {
+        const types = Array.isArray(item?.["@type"]) ? item["@type"] : [item?.["@type"]];
+        if (types.some((type) => String(type).toLowerCase() === "product")) {
+          schema = item;
           break;
         }
       }
-    }
 
-    if (!nextBtn) {
-      console.log("         🚫 No active next page button — stopping pagination.");
-      break;
-    }
+      const offers = Array.isArray(schema?.offers) ? schema.offers[0] : schema?.offers;
+      const schemaImages = Array.isArray(schema?.image) ? schema.image : schema?.image ? [schema.image] : [];
+      const imageCandidates = [
+        meta('meta[property="og:image"]'),
+        meta('meta[name="twitter:image"]'),
+        ...schemaImages.map((image) => typeof image === "string" ? image : image?.url || image?.contentUrl),
+      ].filter(Boolean);
 
-    console.log("         ⏭️ Clicking next page…");
-
-    // Click and wait for change
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {}),
-      nextBtn.click({ delay: 100 }),
-    ]);
-
-    await page.waitForTimeout(2000);
-    await primePage(page, 2, 600);
-    pageNum++;
-  }
-
-  console.log(`         ✅ Finished pagination — ${seen.size} products across ${pageNum} pages.`);
-  return Array.from(seen);
-}
-
-
-/* ---------------- product parsing ---------------- */
-async function parseJsonLdProduct(page) {
-  const blocks = await page.$$eval(
-    'script[type="application/ld+json"]',
-    (nodes) => nodes.map((n) => n.textContent || "")
-  );
-
-  for (const raw of blocks) {
-    try {
-      const data = JSON.parse(raw);
-      const items = Array.isArray(data)
-        ? data
-        : data["@graph"]
-        ? data["@graph"]
-        : [data];
-
-      for (const it of items) {
-        const types = Array.isArray(it["@type"]) ? it["@type"] : [it["@type"]];
-        if (types.includes("Product")) {
-          let images = [];
-
-          // From schema
-          if (Array.isArray(it.image)) images.push(...it.image);
-          else if (typeof it.image === "string") images.push(it.image);
-
-          if (Array.isArray(it.additionalImage)) images.push(...it.additionalImage);
-          else if (typeof it.additionalImage === "string") images.push(it.additionalImage);
-
-          // From DOM gallery (if present)
-          const galleryImgs = await page.$$eval("img", (imgs) =>
-            imgs
-              .map((img) => img.currentSrc || img.src)
-              .filter((src) => src && src.startsWith("http"))
-          );
-          images.push(...galleryImgs);
-
-          const uniqueImages = Array.from(new Set(images));
-
-          const offer = Array.isArray(it.offers) ? it.offers[0] : it.offers || {};
-          return {
-            title: it.name || "",
-            code: it.sku || null,
-            brand:
-              typeof it.brand === "string" ? it.brand : it.brand?.name || null,
-            price: offer.price
-              ? Number(String(offer.price).replace(/[, ]/g, ""))
-              : null,
-            currency: offer.priceCurrency || "PKR",
-            availability: offer.availability || null,
-            images: uniqueImages,
-            description:
-              typeof it.description === "string" ? it.description : "",
-          };
-        }
+      let image = imageCandidates.find((value) => /^https?:\/\//i.test(value)) || "";
+      if (!image) {
+        const candidate = [...document.images].find((img) =>
+          img.currentSrc && img.naturalWidth >= 250 && img.naturalHeight >= 180 &&
+          !/logo|avatar|icon|banner/i.test(img.alt || "")
+        );
+        image = candidate?.currentSrc || "";
       }
-    } catch {}
-  }
-  return null;
-}
 
-async function parseFallback(page) {
-  const title =
-    (await page.$eval("h1", (el) => el.textContent?.trim()).catch(() => "")) ||
-    (await page.title());
-  const text = await page.evaluate(() => document.body.innerText || "");
-  const priceMatch = (text || "").match(/(?:Rs|PKR|₨)\s*([\d,.]+)/i);
-  const priceNum = priceMatch
-    ? Number(priceMatch[1].replace(/[, ]/g, ""))
-    : null;
+      const title = clean(schema?.name) ||
+        meta('meta[property="og:title"]') ||
+        firstText(["h1", '[data-testid*="product-title"]']) ||
+        clean(document.title);
 
-  const imgs = await page
-    .$$eval("img", (imgs) =>
-      imgs.filter((i) => i.src).map((i) => i.currentSrc || i.src)
-    )
-    .catch(() => []);
+      const rawPrice = offers?.price ??
+        meta('meta[property="product:price:amount"]') ??
+        firstText(['[itemprop="price"]', '[data-testid*="price"]', '[class*="price"]']);
+      const priceMatch = String(rawPrice || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/);
+      const price = priceMatch ? Number(priceMatch[0]) : null;
 
-  return {
-    title,
-    price: priceNum,
-    currency: priceMatch ? "PKR" : null,
-    images: imgs,
-    description: text,
-  };
-}
+      const rawDescription = clean(schema?.description) ||
+        meta('meta[name="description"]') ||
+        meta('meta[property="og:description"]') ||
+        firstText(['[itemprop="description"]', '[data-testid*="description"]']);
 
-async function parseProductPage(context, url, attempt = 1) {
-  const page = await context.newPage();
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(700);
-    await primePage(page, 1, 350);
+      const brandValue = schema?.brand;
+      const brand = typeof brandValue === "string" ? brandValue : clean(brandValue?.name);
 
-    const fromJsonLd = await parseJsonLdProduct(page);
-    const fallback = fromJsonLd ? null : await parseFallback(page);
-    const base = fromJsonLd || fallback || {};
-    const urlId = url.split("/").filter(Boolean).pop();
+      return {
+        title,
+        price: Number.isFinite(price) && price > 0 ? price : null,
+        currency: clean(offers?.priceCurrency) ||
+          meta('meta[property="product:price:currency"]') || "PKR",
+        image: image || null,
+        description: rawDescription,
+        brand: brand || null,
+      };
+    });
+
+    if (!extracted.title || !extracted.image) {
+      throw new Error("Missing required product fields (title/image)");
+    }
 
     return {
-      ...base,
-      id: base?.code || urlId || url,
+      id: productIdFromUrl(url),
+      title: extracted.title,
+      price: extracted.price,
+      currency: extracted.currency || "PKR",
+      image: extracted.image,
       link: url,
-      image: base?.images?.[0] || null,
+      description: extracted.description || "",
+      brand: extracted.brand || null,
       updatedAt: nowIso(),
     };
-  } catch (e) {
+  } catch (error) {
     if (attempt < 2) {
-      console.warn(`🔄 retrying product: ${url}`);
-      return await parseProductPage(context, url, attempt + 1);
+      console.warn("      Retry " + (attempt + 1) + "/2: " + url + " (" + error.message + ")");
+      await sleep(1000 * attempt);
+      return extractProduct(page, url, attempt + 1);
     }
-    console.warn("⚠️ product parse failed:", url);
+    console.warn("      Could not parse product: " + url + " (" + error.message + ")");
     return null;
-  } finally {
-    await page.close().catch(() => {});
   }
 }
 
-/* ---------------- main scrape ---------------- */
-const HP_PREFIX = "/explore/home-page/";
+async function mapLimit(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 async function scrape() {
-  const previous = loadPrevious();
-  const cacheByLink = new Map();
-  if (previous?.categories?.length) {
-    for (const c of previous.categories) {
-      for (const s of c.subcategories || []) {
-        for (const p of s.products || []) {
-          if (p?.link) cacheByLink.set(p.link, p);
-        }
-      }
-    }
-  }
+  const previous = readJson(OUT_PATH, { scrapedAt: null, categories: [] });
+  const checkpoint = readJson(CHECKPOINT_PATH, null);
+  const progress = readJson(PROGRESS_PATH, { completedSubcategoryUrls: [] });
+  const completed = new Set(progress.completedSubcategoryUrls || []);
+  const output = checkpoint?.categories ? checkpoint : previous;
+  output.categories ||= [];
 
-  const checkpoint = loadCheckpoint();
-  const out = checkpoint || { scrapedAt: nowIso(), categories: [] };
-
+  const existingByLink = loadExistingProducts(previous);
   const browser = await chromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   const context = await browser.newContext({
     viewport: { width: 1366, height: 900 },
-    userAgent:
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
   });
-  const page = await context.newPage();
 
-  console.log("🌐 Opening Explore…");
-  await page.goto(`${BASE}/explore`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(5000);
-  await primePage(page, 3, 1000);
-
-  let categories = await page.evaluate(({ base, HP_PREFIX }) => {
-    const anchors = Array.from(document.querySelectorAll(`a[href*="${HP_PREFIX}"]`));
-    const map = new Map();
-    for (const a of anchors) {
-      let full = a.getAttribute("href") || a.href || "";
-      try {
-        full = new URL(full, base).href;
-      } catch {}
-      const parts = (full.split(HP_PREFIX)[1] || "").split("/").filter(Boolean);
-      if (!parts.length) continue;
-      const catName = decodeURIComponent(parts[0]);
-      const rootUrl = `${base}${HP_PREFIX}${encodeURIComponent(catName)}`;
-      if (!map.has(rootUrl)) map.set(rootUrl, { name: catName, url: rootUrl });
+  try {
+    const page = await context.newPage();
+    console.log("Opening " + CATEGORY_URL);
+    const subcategories = await discoverSubcategories(page);
+    if (!subcategories.length) {
+      throw new Error("No Kitchenware subcategories were discovered. Existing catalogue was not replaced.");
     }
-    return Array.from(map.values());
-  }, { base: BASE, HP_PREFIX });
 
-  console.log(`📂 Found ${categories.length} categories`);
-  categories = categories.filter((c) => c.name.toLowerCase() === "kitchenware");
+    console.log("Found " + subcategories.length + " Kitchenware subcategories.");
+    let category = output.categories.find((item) =>
+      String(item.name || "").toLowerCase() === "kitchenware"
+    );
+    if (!category) {
+      category = { name: "Kitchenware", url: CATEGORY_URL, subcategories: [] };
+      output.categories.push(category);
+    }
+    category.url = CATEGORY_URL;
+    category.subcategories ||= [];
 
-  if (!categories.length) {
-    console.error("❌ No 'Kitchenware' category found!");
-    await browser.close();
-    return;
-  }
-
-  console.log(`🎯 Target category: Kitchenware`);
-
-  for (const cat of categories) {
-    await page.goto(cat.url, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(5000);
-    await primePage(page, 3, 1000);
-
-    const subcats = await page.evaluate(({ catUrl, base, HP_PREFIX }) => {
-      const u = new URL(catUrl, base);
-      const catName = decodeURIComponent(u.pathname.split("/").pop());
-      const anchors = Array.from(document.querySelectorAll("a[href]"));
-      const found = [];
-      for (const a of anchors) {
-        let full = a.getAttribute("href") || a.href || "";
-        try {
-          full = new URL(full, base).href;
-        } catch {}
-        if (!full.includes(HP_PREFIX)) continue;
-        const parts = (full.split(HP_PREFIX)[1] || "")
-          .split("/")
-          .filter(Boolean)
-          .map(decodeURIComponent);
-        if (parts.length < 2) continue;
-        if ((parts[0] || "").toLowerCase() !== catName.toLowerCase()) continue;
-        found.push({ name: parts[1], url: full });
+    for (const subcategory of subcategories) {
+      if (completed.has(subcategory.url)) {
+        console.log("Skipping completed subcategory: " + subcategory.name);
+        continue;
       }
-      const m = new Map();
-      for (const s of found) if (!m.has(s.url)) m.set(s.url, s);
-      return Array.from(m.values());
-    }, { catUrl: cat.url, base: BASE, HP_PREFIX });
 
-    console.log(`   ↳ ${subcats.length} subcategories`);
+      console.log("\nSubcategory: " + subcategory.name);
+      const listingPage = await context.newPage();
+      let productLinks;
+      try {
+        productLinks = await collectSubcategoryProducts(listingPage, subcategory.url);
+      } finally {
+        await listingPage.close().catch(() => {});
+      }
 
-    const catObj = { name: cat.name, url: cat.url, subcategories: [] };
+      if (!productLinks.length) {
+        console.warn("No product links found for " + subcategory.name + "; keeping previous data.");
+        continue;
+      }
 
-    for (const sub of subcats) {
-      console.log(`      • Subcategory: ${sub.name}`);
-      const productLinks = await extractAllProductLinks(page, sub.url);
+      const products = await mapLimit(productLinks, PARSE_CONCURRENCY, async (link) => {
+        const cached = existingByLink.get(link);
+        if (cached && ageInDays(cached.updatedAt) <= REFRESH_DAYS) return cached;
 
-      const products = [];
-      const today = nowIso();
+        const productPage = await context.newPage();
+        try {
+          const parsed = await extractProduct(productPage, link);
+          return parsed || cached || null;
+        } finally {
+          await productPage.close().catch(() => {});
+        }
+      });
 
-      await mapLimitWithProgress(
-        productLinks,
-        PARSE_CONCURRENCY,
-        async (link) => {
-          const cached = cacheByLink.get(link);
-          const fresh =
-            cached?.updatedAt &&
-            daysBetween(cached.updatedAt, today) <= REFRESH_DAYS;
-          if (fresh) {
-            products.push(cached);
-            return;
-          }
-          const parsed = await parseProductPage(context, link);
-          if (parsed) products.push(parsed);
-        },
-        "Parsing product"
-      );
+      const orderedProducts = products.filter(Boolean);
+      const subcategoryIndex = category.subcategories.findIndex((item) => item.url === subcategory.url);
+      const updatedSubcategory = {
+        name: subcategory.name,
+        url: subcategory.url,
+        products: orderedProducts,
+      };
 
-      const byLink = new Map(products.map((p) => [p.link, p]));
-      const ordered = productLinks.map((L) => byLink.get(L)).filter(Boolean);
+      if (subcategoryIndex >= 0) category.subcategories[subcategoryIndex] = updatedSubcategory;
+      else category.subcategories.push(updatedSubcategory);
 
-      catObj.subcategories.push({ name: sub.name, url: sub.url, products: ordered });
+      category.subcategories.sort((a, b) => a.name.localeCompare(b.name));
+      output.scrapedAt = nowIso();
+      writeJsonAtomic(CHECKPOINT_PATH, output);
 
-      const tmpOut = JSON.parse(JSON.stringify(out));
-      const existing = tmpOut.categories.findIndex((c) => c.name === catObj.name);
-      if (existing === -1) tmpOut.categories.push(catObj);
-      else tmpOut.categories[existing] = catObj;
-
-      tmpOut.scrapedAt = nowIso();
-      saveCheckpoint(tmpOut);
-      console.log(`💾 Checkpoint saved after ${cat.name} -> ${sub.name}`);
+      completed.add(subcategory.url);
+      writeJsonAtomic(PROGRESS_PATH, { completedSubcategoryUrls: [...completed] });
+      console.log("Saved " + orderedProducts.length + " products for " + subcategory.name + ".");
     }
 
-    out.categories.push(catObj);
-    saveCheckpoint(out);
-  }
+    const unfinished = subcategories.filter((item) => !completed.has(item.url));
+    if (unfinished.length) {
+      throw new Error("Scrape paused safely. " + unfinished.length + " subcategory/subcategories remain; rerun to continue.");
+    }
 
-  ensureDir(OUT_PATH);
-  if (fs.existsSync(TMP_PATH)) fs.renameSync(TMP_PATH, OUT_PATH);
-  else fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2));
-  console.log(`✅ Final saved to ${OUT_PATH}`);
-  await browser.close();
+    output.scrapedAt = nowIso();
+    writeJsonAtomic(OUT_PATH, output);
+    fs.rmSync(CHECKPOINT_PATH, { force: true });
+    fs.rmSync(PROGRESS_PATH, { force: true });
+    console.log("\nFinished. Catalogue saved to " + OUT_PATH);
+  } finally {
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
+  }
 }
 
-scrape().catch((e) => {
-  console.error("❌ Scrape failed:", e);
-  process.exit(1);
+scrape().catch((error) => {
+  console.error("Scrape failed:", error);
+  process.exitCode = 1;
 });
