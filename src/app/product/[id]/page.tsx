@@ -150,7 +150,11 @@ export default function ProductPage() {
         subcategory: s.name || "Unknown",
         price: typeof match.price === "number" ? match.price : 0, // ✅ fallback to 0
         currency: match.currency || "PKR", // ✅ fallback to PKR
-        image: isUsableProductImage(match.image) ? match.image : undefined,
+        image: isUsableProductImage(match.image)
+          ? match.image
+          : (Array.isArray(match.images)
+              ? match.images.find((image: string) => isUsableProductImage(image))
+              : undefined),
         };
         break;
         }
@@ -794,8 +798,9 @@ const addToCart = (goCheckout = false) => {
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="mb-6">
             <div className="flex space-x-4 overflow-x-auto scrollbar-hide">
-              {relatedProducts 
-               .filter(p => p.price > 0 && p.image).slice(i * 10, i * 10 + 10).map((p) => (
+              {relatedProducts
+               .filter(p => p.price > 0 && p.image && !failedRelatedIds.includes(p.id))
+               .slice(i * 10, i * 10 + 10).map((p) => (
                 <a
                   key={p.id}
                   href={`/product/${p.id}`}
