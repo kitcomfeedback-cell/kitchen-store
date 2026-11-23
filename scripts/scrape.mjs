@@ -229,16 +229,25 @@ async function extractProduct(page, url, attempt = 1) {
         meta('meta[property="og:image"]'),
         meta('meta[name="twitter:image"]'),
         ...schemaImages.map((image) => typeof image === "string" ? image : image?.url || image?.contentUrl),
-      ].filter(Boolean);
+        ...[...document.images]
+          .filter((img) =>
+            img.naturalWidth >= 120 && img.naturalHeight >= 120 &&
+            !/logo|avatar|icon|banner|placeholder/i.test(img.alt || "")
+          )
+          .map((img) => img.currentSrc || img.src),
+      ].filter((value) => {
+        try {
+          const candidate = new URL(value);
+          return candidate.protocol === "https:" &&
+            ["static.markaz.app", "content.public.markaz.app", "www.shop.markaz.app"].includes(candidate.hostname) &&
+            !/logo|avatar|icon|banner|placeholder|\\.svg(?:$|\\?)/i.test(candidate.pathname);
+        } catch {
+          return false;
+        }
+      });
 
-      let image = imageCandidates.find((value) => /^https?:\/\//i.test(value)) || "";
-      if (!image) {
-        const candidate = [...document.images].find((img) =>
-          img.currentSrc && img.naturalWidth >= 250 && img.naturalHeight >= 180 &&
-          !/logo|avatar|icon|banner/i.test(img.alt || "")
-        );
-        image = candidate?.currentSrc || "";
-      }
+      const images = [...new Set(imageCandidates)].slice(0, 12);
+      const image = images[0] || "";
 
       const title = clean(schema?.name) ||
         meta('meta[property="og:title"]') ||
@@ -265,12 +274,13 @@ async function extractProduct(page, url, attempt = 1) {
         currency: clean(offers?.priceCurrency) ||
           meta('meta[property="product:price:currency"]') || "PKR",
         image: image || null,
+        images,
         description: rawDescription,
         brand: brand || null,
       };
     });
 
-    if (!extracted.title || !extracted.image) {
+    if (!extracted.title || !extracted.image || !extracted.images?.length) {
       throw new Error("Missing required product fields (title/image)");
     }
 
@@ -280,6 +290,7 @@ async function extractProduct(page, url, attempt = 1) {
       price: extracted.price,
       currency: extracted.currency || "PKR",
       image: extracted.image,
+      images: extracted.images,
       link: url,
       description: extracted.description || "",
       brand: extracted.brand || null,
@@ -369,7 +380,7 @@ async function scrape() {
 
       const products = await mapLimit(productLinks, PARSE_CONCURRENCY, async (link) => {
         const cached = existingByLink.get(link);
-        if (cached && ageInDays(cached.updatedAt) <= REFRESH_DAYS) return cached;
+        if (cached && Array.isArray(cached.images) && cached.images.length > 0 && ageInDays(cached.updatedAt) <= REFRESH_DAYS) return cached;
 
         const productPage = await context.newPage();
         try {
