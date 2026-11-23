@@ -31,7 +31,7 @@ function cleanProductDescription(value?: string): string[] {
     // Split common specification labels and hyphen-separated feature lists.
     .replace(/\\s+-\\s+/g, "\\n")
     .replace(/\\s+(?=(?:Material|Number\\s+Of\\s+Pieces|Product\\s+Feature|Color|Colors|Package\\s+Includes|Length|Width|Height|Set\\s+Of|Note|Size|Sizes)\\s*:)/gi, "\\n")
-    .replace(/\\s+/g, " ")
+    .replace(/[ \\t]+/g, " ")
     .trim();
 
   return cleaned.split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
@@ -350,7 +350,6 @@ const addToCart = (goCheckout = false) => {
                   height={600}
                   priority
                   unoptimized
-                  onError={() => setCurrentIndex(0)}
                   className="object-contain w-full h-[500px] rounded-2xl cursor-pointer bg-white"
                 />
               </div>
