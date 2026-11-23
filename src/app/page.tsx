@@ -136,6 +136,7 @@ export default function HomePage() {
   }, []);
 
   /* 🌀 Shuffle once per session */
+  const [failedProductIds, setFailedProductIds] = useState<string[]>([]);
   const [randomizedProducts, setRandomizedProducts] = useState<Product[]>([]);
   useEffect(() => {
     const cached = sessionStorage.getItem("shuffledProducts");
@@ -1126,8 +1127,8 @@ export default function HomePage() {
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fadeIn">
 
-        {displayProducts.length > 0 ? (
-          displayProducts.map((p) => {
+        {displayProducts.filter((p) => !failedProductIds.includes(p.id)).length > 0 ? (
+          displayProducts.filter((p) => !failedProductIds.includes(p.id)).map((p) => {
 
           const fixedTags = ["Sale", "20% Off", "30% Off", "Hot", "New", ""]; 
 
@@ -1184,6 +1185,7 @@ export default function HomePage() {
                 alt={p.title}
                 className="object-cover aspect-square rounded-t-xl"
                 loading="lazy"
+                onError={() => setFailedProductIds((previous) => previous.includes(p.id) ? previous : [...previous, p.id])}
               />
               {p.id.startsWith("skeleton-") && (
                 <div className="p-3 flex flex-col flex-1">
