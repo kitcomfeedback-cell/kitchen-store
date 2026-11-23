@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import catalogData from "../../data/catalog.json";
 import { useSwipeable } from "react-swipeable";
@@ -95,6 +96,15 @@ export default function ProductPage() {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!showGallery) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showGallery]);
 
   const router = useRouter();
 
@@ -436,9 +446,9 @@ const addToCart = (goCheckout = false) => {
       </div>
 
       {/* Full-screen product image viewer */}
-      {showGallery && (
+      {showGallery && typeof document !== "undefined" && createPortal((
         <div
-          className="fixed inset-0 z-[100] flex flex-col bg-black text-white"
+          className="fixed inset-0 z-[9999] flex h-[100dvh] w-screen flex-col overflow-hidden bg-black text-white"
           role="dialog"
           aria-modal="true"
           aria-label="Product image gallery"
@@ -473,7 +483,7 @@ const addToCart = (goCheckout = false) => {
             </button>
           </div>
 
-          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-12 py-4 sm:px-20">
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-12 py-2 sm:px-20">
             <button
               type="button"
               aria-label="Previous image"
@@ -491,7 +501,7 @@ const addToCart = (goCheckout = false) => {
             <img
               src={images[currentIndex] || selectedImage || images[0]}
               alt={product.title}
-              className="max-h-full max-w-full select-none object-contain"
+              className="block h-[78dvh] w-[85vw] select-none object-contain"
               draggable={false}
               onError={() => {
                 const failed = images[currentIndex];
@@ -544,7 +554,7 @@ const addToCart = (goCheckout = false) => {
             </div>
           )}
         </div>
-      )}
+      ), document.body)}
 
       {/* 🧾 Product Info (Right) */}
       <div className="w-full lg:w-1/2 mt-6">
