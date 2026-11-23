@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import catalogData from "../../data/catalog.json";
-import {  } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -21,6 +20,22 @@ import {
   ChevronLeft, 
   CornerUpLeft,
 } from "lucide-react";
+
+function cleanProductDescription(value?: string): string[] {
+  if (!value) return [];
+
+  // Remove supplier-only product codes even when appended to the end of a sentence.
+  const cleaned = value
+    .replace(/\\s*[,;|•-]?\\s*Product\\s*Code\\s*:\\s*[A-Z0-9_-]+/gi, "")
+    .replace(/\\bMZ[A-Z0-9_-]{8,}\\b/gi, "")
+    // Split common specification labels and hyphen-separated feature lists.
+    .replace(/\\s+-\\s+/g, "\\n")
+    .replace(/\\s+(?=(?:Material|Number\\s+Of\\s+Pieces|Product\\s+Feature|Color|Colors|Package\\s+Includes|Length|Width|Height|Set\\s+Of|Note|Size|Sizes)\\s*:)/gi, "\\n")
+    .replace(/\\s+/g, " ")
+    .trim();
+
+  return cleaned.split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
+}
 
 export default function ProductPage() {
   const { id } = useParams(); // ✅ Dynamic product ID from URL
@@ -166,23 +181,24 @@ export default function ProductPage() {
     }
 
   // ✅ Normalize product images to ensure all display
-  const validImages =
-    Array.isArray(product.images) && product.images.length > 0
-      ? product.images.filter(
-          (img: string) =>
-            img &&
-            !img.toLowerCase().includes("placeholder") &&
-            !img.includes("markaz_logo_mobile") &&
-            !img.endsWith(".svg")
-        )
-      : [];
+  const isUsableImageUrl = (value?: string | null) => {
+    if (!value || typeof value !== "string") return false;
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" &&
+        ["static.markaz.app", "content.public.markaz.app", "www.shop.markaz.app"].includes(url.hostname) &&
+        !/placeholder|markaz_logo_mobile|\\.svg(?:$|\\?)/i.test(url.pathname);
+    } catch {
+      return false;
+    }
+  };
 
-  const images = [
-    ...(validImages.length ? validImages : []),
-    ...(product.image ? [product.image] : []),
-  ].filter(
-    (value, index, self) => value && self.indexOf(value) === index // remove duplicates
-  );
+  const validImages = Array.isArray(product.images)
+    ? product.images.filter((img: string) => isUsableImageUrl(img))
+    : [];
+
+  const images = [...validImages, ...(isUsableImageUrl(product.image) ? [product.image as string] : [])]
+    .filter((value, index, self) => self.indexOf(value) === index);
 
   if (images.length === 0) images.push("/placeholder.png");
 
@@ -333,6 +349,8 @@ const addToCart = (goCheckout = false) => {
                   width={600}
                   height={600}
                   priority
+                  unoptimized
+                  onError={() => setCurrentIndex(0)}
                   className="object-contain w-full h-[500px] rounded-2xl cursor-pointer bg-white"
                 />
               </div>
@@ -407,6 +425,7 @@ const addToCart = (goCheckout = false) => {
                     alt={`Product image ${i + 1}`}
                     width={900}
                     height={700}
+                    unoptimized
                     className="object-contain max-h-[75vh] rounded-lg mt-0"
                   />
 
@@ -518,32 +537,13 @@ const addToCart = (goCheckout = false) => {
         </button>
 
         {showDescription && product.description && (
-          <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <h3 className="text-base font-semibold mb-2 text-gray-800">Product Description</h3>
-            <div className="text-sm text-gray-700 space-y-2">
-              {product.description
-                .split(/\r?\n/)
-                .map(line => line.trim())
-                .filter(line => 
-                  line.length > 0 &&
-                  !/^product\s*code\s*:/i.test(line) && // 🚫 remove "Product Code: ..."
-                  !/^mz\d+/i.test(line) // 🚫 remove any line starting with MZ number
-                )
-                .map((line, i) => {
-                  const isBullet =
-                    /^\d+[\.\)]/.test(line) || // 1), 2. etc.
-                    /^[•\-–]/.test(line) || // • or - or –
-                    /:/.test(line); // looks like a feature
-
-                  return isBullet ? (
-                    <li key={i} className="list-disc list-inside">
-                      {line.replace(/^[•\-–\d\.\)]+\s*/, "")}
-                    </li>
-                  ) : (
-                    <p key={i}>{line}</p>
-                  );
-                })}
-            </div>
+          <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <h3 className="mb-3 text-base font-semibold text-gray-800">Product Description</h3>
+            <ul className="list-disc space-y-2 pl-5 text-sm leading-6 text-gray-700">
+              {cleanProductDescription(product.description).map((line, i) => (
+                <li key={i} className="break-words">{line}</li>
+              ))}
+            </ul>
           </div>
         )}
         </div>
