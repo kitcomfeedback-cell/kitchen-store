@@ -1203,7 +1203,19 @@ export default function HomePage() {
                 alt={p.title}
                 className="object-cover aspect-square rounded-t-xl"
                 loading="lazy"
-                onError={() => setFailedProductIds((previous) => previous.includes(p.id) ? previous : [...previous, p.id])}
+                onError={(event) => {
+                  const imageElement = event.currentTarget;
+                  const nextIndex = Number(imageElement.dataset.fallbackIndex || "0") + 1;
+                  const nextImage = p.images?.[nextIndex];
+                  if (nextImage) {
+                    imageElement.dataset.fallbackIndex = String(nextIndex);
+                    imageElement.src = nextImage;
+                    return;
+                  }
+                  setFailedProductIds((previous) =>
+                    previous.includes(p.id) ? previous : [...previous, p.id]
+                  );
+                }}
               />
               {p.id.startsWith("skeleton-") && (
                 <div className="p-3 flex flex-col flex-1">
