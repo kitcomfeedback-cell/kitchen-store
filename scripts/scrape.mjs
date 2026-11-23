@@ -13,6 +13,10 @@ const PROGRESS_PATH = path.resolve("scripts/scrape_progress.json");
 const PARSE_CONCURRENCY = Math.max(1, Number(process.env.PARSE_CONCURRENCY || 5));
 const REFRESH_DAYS = Math.max(0, Number(process.env.REFRESH_DAYS || 7));
 const MAX_PRODUCTS_PER_SUBCAT = Math.max(0, Number(process.env.MAX_PRODUCTS_PER_SUBCAT || 0));
+const CANDIDATE_POOL_PER_SUBCAT = Math.max(
+  10,
+  Number(process.env.CANDIDATE_POOL_PER_SUBCAT || (MAX_PRODUCTS_PER_SUBCAT > 0 ? MAX_PRODUCTS_PER_SUBCAT * 5 : 0))
+);
 const NAV_TIMEOUT = 60000;
 const PRODUCT_PATH = "/shop/product/";
 
@@ -155,8 +159,7 @@ async function collectSubcategoryProducts(page, subcategoryUrl) {
     previousPageCount = links.size;
   }
 
-  const result = [...links];
-  return MAX_PRODUCTS_PER_SUBCAT > 0 ? result.slice(0, MAX_PRODUCTS_PER_SUBCAT) : result;
+  return [...links];
 }
 async function discoverSubcategories(page) {
   await page.goto(CATEGORY_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
@@ -279,10 +282,27 @@ async function extractProduct(page, url, attempt = 1) {
 
       const brandValue = schema?.brand;
       const brand = typeof brandValue === "string" ? brandValue : clean(brandValue?.name);
+      const ratingRaw = schema?.aggregateRating?.ratingValue ??
+        meta('meta[itemprop="ratingValue"]') ??
+        firstText(['[itemprop="ratingValue"]', '[class*="rating"] [class*="value"]']);
+      const reviewRaw = schema?.aggregateRating?.reviewCount ??
+        schema?.aggregateRating?.ratingCount ??
+        meta('meta[itemprop="reviewCount"]') ??
+        firstText(['[itemprop="reviewCount"]', '[class*="review-count"]', '[class*="reviews-count"]']);
+      const salesText = document.body?.innerText || "";
+      const salesMatch = salesText.match(/(?:sold|sales|orders?)\s*[:(]?\s*([\d,]+)/i) ||
+        salesText.match(/([\d,]+)\s*\+?\s*(?:sold|sales|orders?)/i);
+      const numeric = (value) => {
+        const match = String(value || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/);
+        return match ? Number(match[0]) : null;
+      };
 
       return {
         title,
         price: Number.isFinite(price) && price > 0 ? price : null,
+        rating: numeric(ratingRaw),
+        reviewCount: numeric(reviewRaw),
+        salesCount: salesMatch ? numeric(salesMatch[1]) : null,
         currency: clean(offers?.priceCurrency) ||
           meta('meta[property="product:price:currency"]') || "PKR",
         image: image || null,
@@ -300,6 +320,9 @@ async function extractProduct(page, url, attempt = 1) {
       id: productIdFromUrl(url),
       title: extracted.title,
       price: extracted.price,
+      rating: extracted.rating,
+      reviewCount: extracted.reviewCount,
+      salesCount: extracted.salesCount,
       currency: extracted.currency || "PKR",
       image: extracted.image,
       images: extracted.images,
@@ -370,12 +393,12 @@ async function scrape() {
     category.url = CATEGORY_URL;
     category.subcategories ||= [];
 
-    for (const subcategory of subcategories) {
-      if (completed.has(subcategory.url)) {
-        console.log("Skipping completed subcategory: " + subcategory.name);
-        continue;
-      }
+    // Rebuild this category from scratch so duplicate products from old runs
+    // cannot survive in multiple subcategories.
+    category.subcategories = [];
+    const globallyAssignedProductIds = new Set();
 
+    for (const subcategory of subcategories) {
       console.log("\nSubcategory: " + subcategory.name);
       const listingPage = await context.newPage();
       let productLinks;
@@ -390,20 +413,79 @@ async function scrape() {
         continue;
       }
 
-      const products = await mapLimit(productLinks, PARSE_CONCURRENCY, async (link) => {
+      // Filter product IDs globally before parsing. A product listed in another
+      // subcategory is assigned only once across the entire Kitchenware catalogue.
+      const uniqueLinks = [];
+      const localIds = new Set();
+      for (const link of productLinks) {
+        const id = productIdFromUrl(link);
+        if (globallyAssignedProductIds.has(id) || localIds.has(id)) continue;
+        localIds.add(id);
+        uniqueLinks.push(link);
+      }
+
+      const candidateLinks = CANDIDATE_POOL_PER_SUBCAT > 0
+        ? uniqueLinks.slice(0, CANDIDATE_POOL_PER_SUBCAT)
+        : uniqueLinks;
+      console.log("      Unique candidates: " + candidateLinks.length + " (removed " + (productLinks.length - uniqueLinks.length) + " duplicates)");
+
+      const products = await mapLimit(candidateLinks, PARSE_CONCURRENCY, async (link) => {
         const cached = existingByLink.get(link);
-        if (cached && Array.isArray(cached.images) && cached.images.length > 0 && ageInDays(cached.updatedAt) <= REFRESH_DAYS) return cached;
+        const cacheHasRanking = cached &&
+          (Number.isFinite(Number(cached.salesCount)) ||
+           Number.isFinite(Number(cached.reviewCount)) ||
+           Number.isFinite(Number(cached.rating)));
+        if (
+          cached &&
+          Array.isArray(cached.images) &&
+          cached.images.length > 0 &&
+          cacheHasRanking &&
+          ageInDays(cached.updatedAt) <= REFRESH_DAYS
+        ) return cached;
 
         const productPage = await context.newPage();
         try {
           const parsed = await extractProduct(productPage, link);
-          return parsed || cached || null;
+          return parsed || (cached?.image ? cached : null);
         } finally {
           await productPage.close().catch(() => {});
         }
       });
 
-      const orderedProducts = products.filter(Boolean);
+      const candidates = products
+        .map((product, index) => product ? { product, listingIndex: index } : null)
+        .filter(Boolean);
+
+      // Rank by real sales first, then review volume, rating, and lower price.
+      // When Markaz exposes none of those metrics, retain Markaz's own curated
+      // listing order rather than pretending that low price means best-selling.
+      candidates.sort((a, b) => {
+        const A = a.product, B = b.product;
+        const compareAvailable = (field, direction = -1) => {
+          const av = Number.isFinite(Number(A[field])) ? Number(A[field]) : null;
+          const bv = Number.isFinite(Number(B[field])) ? Number(B[field]) : null;
+          if (av === null && bv === null) return 0;
+          if (av === null) return 1;
+          if (bv === null) return -1;
+          return (av - bv) * direction;
+        };
+        return compareAvailable("salesCount") ||
+          compareAvailable("reviewCount") ||
+          compareAvailable("rating") ||
+          compareAvailable("price", 1) ||
+          a.listingIndex - b.listingIndex;
+      });
+
+      const limit = MAX_PRODUCTS_PER_SUBCAT > 0 ? MAX_PRODUCTS_PER_SUBCAT : candidates.length;
+      const orderedProducts = candidates
+        .slice(0, limit)
+        .map(({ product }) => product)
+        .filter((product) => {
+          const id = String(product.id || productIdFromUrl(product.link));
+          if (globallyAssignedProductIds.has(id)) return false;
+          globallyAssignedProductIds.add(id);
+          return true;
+        });
       const subcategoryIndex = category.subcategories.findIndex((item) => item.url === subcategory.url);
       const updatedSubcategory = {
         name: subcategory.name,
@@ -418,14 +500,7 @@ async function scrape() {
       output.scrapedAt = nowIso();
       writeJsonAtomic(CHECKPOINT_PATH, output);
 
-      completed.add(subcategory.url);
-      writeJsonAtomic(PROGRESS_PATH, { completedSubcategoryUrls: [...completed] });
-      console.log("Saved " + orderedProducts.length + " products for " + subcategory.name + ".");
-    }
-
-    const unfinished = subcategories.filter((item) => !completed.has(item.url));
-    if (unfinished.length) {
-      throw new Error("Scrape paused safely. " + unfinished.length + " subcategory/subcategories remain; rerun to continue.");
+      console.log("Saved " + orderedProducts.length + " unique ranked products for " + subcategory.name + ".");
     }
 
     output.scrapedAt = nowIso();
