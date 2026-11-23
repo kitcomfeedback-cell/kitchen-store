@@ -69,10 +69,20 @@ function extractOptionValues(description: string | undefined, label: "Color" | "
   const match = clean.match(new RegExp("(?:^|[\\s;,|])" + label + "s?\\s*:\\s*(.+?)(?=\\s+(?:" + labels + ")\\s*:|$)", "i"));
   if (!match) return [];
 
+  const genericValues = label === "Color"
+    ? /^(?:multi[ -]?colou?r|assorted|mixed|mix|random|various|any|other|standard|default|n\/?a|none)$/i
+    : /^(?:one size|free size|standard size|universal size|assorted|mixed|random|various|any|other|standard|default|n\/?a|none)$/i;
+
   return match[1]
     .split(/\s*(?:,|\/|\||;|\bor\b)\s*/i)
-    .map((value) => value.trim())
-    .filter((value) => value && value.length <= 35 && !/package|includes|note|manual measurement|lighting|monitor effects/i.test(value))
+    .map((value) => value.replace(/[.!]+$/, "").trim())
+    .filter((value) =>
+      value.length > 0 &&
+      value.length <= 24 &&
+      !genericValues.test(value) &&
+      !/package|includes|note|manual measurement|lighting|monitor effects|\b(?:pcs?|pieces?|kgs?|kg|grams?|capacity|weight)\b/i.test(value) &&
+      (label !== "Size" || /^(?:xxs|xs|s|m|l|xl|xxl|xxxl|\d{1,3}(?:\.\d+)?(?:\s?(?:cm|mm|inches?|in|ft))?)$/i.test(value))
+    )
     .filter((value, index, all) => all.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
     .slice(0, 12);
 }
@@ -642,7 +652,7 @@ const addToCart = (goCheckout = false) => {
           if (colors.length === 0 && sizes.length === 0) return null;
 
           return (
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 mb-7 space-y-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3 sm:p-4">
               {colors.length > 0 && (
                 <div>
                   <h3 className="mb-2 text-sm font-semibold text-gray-800">Available Colors</h3>
@@ -682,7 +692,7 @@ const addToCart = (goCheckout = false) => {
         })()}
 
         {/* 🎟️ Coupon Bar */}
-        <div className="flex items-center space-x-2 mb-6">
+        <div className="mt-6 mb-6 flex w-full min-w-0 items-center gap-2">
         <input
         type="text"
         value={coupon}
@@ -694,11 +704,11 @@ const addToCart = (goCheckout = false) => {
             }
         }}
         placeholder="Enter coupon code"
-        className="flex-1 border-2 border-blue-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        className="min-w-0 flex-1 rounded-xl border-2 border-blue-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
         <button
             onClick={applyCoupon}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition"
+            className="shrink-0 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
         >
             Apply
         </button>
