@@ -99,20 +99,65 @@ async function getListingLinks(page) {
   });
 }
 
-async function getMaxPage(page) {
-  return page.$$eval('a[href*="page="]', (anchors) => {
-    let max = 1;
-    for (const anchor of anchors) {
-      try {
-        const url = new URL(anchor.href);
-        const n = Number(url.searchParams.get("page"));
-        if (Number.isInteger(n) && n > max) max = n;
-      } catch {}
-    }
-    return max;
-  }).catch(() => 1);
+async function scrollListing(page) {
+  let stableRounds = 0;
+  let previousCount = 0;
+  const all = new Set();
+
+  for (let round = 0; round < 12 && stableRounds < 3; round++) {
+    for (const link of await getListingLinks(page)) all.add(link);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(650);
+    for (const link of await getListingLinks(page)) all.add(link);
+
+    if (all.size === previousCount) stableRounds++;
+    else stableRounds = 0;
+    previousCount = all.size;
+  }
+  return [...all];
 }
 
+function pageUrlForNumber(subcategoryUrl, pageNumber) {
+  const url = new URL(subcategoryUrl);
+  if (pageNumber > 1) url.searchParams.set("page", String(pageNumber));
+  else url.searchParams.delete("page");
+  return url.href;
+}
+
+async function collectSubcategoryProducts(page, subcategoryUrl) {
+  const links = new Set();
+  let previousPageCount = -1;
+
+  // Walk numbered pages sequentially. Markaz may show only a sliding window
+  // of page numbers, so do not infer the final page from visible pagination links.
+  for (let pageNumber = 1; pageNumber <= 300; pageNumber++) {
+    const target = pageUrlForNumber(subcategoryUrl, pageNumber);
+    if (page.url() !== target) {
+      await page.goto(target, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+      await waitForListing(page);
+    } else if (pageNumber === 1) {
+      await waitForListing(page);
+    }
+
+    const pageLinks = await scrollListing(page);
+    let added = 0;
+    for (const link of pageLinks) {
+      if (!links.has(link)) {
+        links.add(link);
+        added++;
+      }
+    }
+
+    console.log("      Listing page " + pageNumber + ": +" + added + " new, " + links.size + " total");
+
+    if (pageLinks.length === 0 || (pageNumber > 1 && added === 0)) break;
+    if (links.size === previousPageCount) break;
+    previousPageCount = links.size;
+  }
+
+  const result = [...links];
+  return MAX_PRODUCTS_PER_SUBCAT > 0 ? result.slice(0, MAX_PRODUCTS_PER_SUBCAT) : result;
+}
 async function scrollListing(page) {
   let stableRounds = 0;
   let previousCount = 0;
