@@ -460,21 +460,7 @@ async function scrape() {
       console.log("      Unique candidates: " + candidateLinks.length + " (removed " + (productLinks.length - uniqueLinks.length) + " duplicates)");
 
       const products = await mapLimit(candidateLinks, PARSE_CONCURRENCY, async (link) => {
-        const cached = existingByLink.get(link);
-        const hasMetric = (value) =>
-          value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
-        const cacheHasRanking = cached &&
-          (hasMetric(cached.salesCount) ||
-           hasMetric(cached.reviewCount) ||
-           hasMetric(cached.rating));
-        if (
-          cached &&
-          Array.isArray(cached.images) &&
-          cached.images.length > 0 &&
-          cacheHasRanking &&
-          ageInDays(cached.updatedAt) <= REFRESH_DAYS
-        ) return cached;
-
+        // Revisit every candidate so image availability and ranking metrics are fresh.
         const productPage = await context.newPage();
         try {
           const parsed = await extractProduct(productPage, link);
