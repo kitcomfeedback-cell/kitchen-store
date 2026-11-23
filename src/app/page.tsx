@@ -108,25 +108,29 @@ export default function HomePage() {
     for (const c of catalogData.categories || []) {
       for (const s of c.subcategories || []) {
         for (const p of s.products || []) {
-
-          // ✅ Normalize price
           const price =
             typeof p.price === "number" && p.price > 0
               ? Math.round(p.price * 1.5)
               : null;
-
-          // ❌ Skip invalid price
           if (!price || price <= 0) continue;
 
-          // ❌ Skip missing / placeholder image
-          // Keep only products with a valid, supported Markaz product image URL.
-          if (!hasUsableProductImage(p.image)) continue;
+          // Use the first valid gallery image when the primary image is stale.
+          const images = [
+            ...(Array.isArray(p.images) ? p.images : []),
+            p.image,
+          ].filter(
+            (image: unknown): image is string =>
+              typeof image === "string" && hasUsableProductImage(image)
+          ).filter((image: string, index: number, all: string[]) => all.indexOf(image) === index);
+
+          if (images.length === 0) continue;
 
           items.push({
             ...p,
             price,
             currency: p.currency ?? "PKR",
-            image: p.image,
+            image: images[0],
+            images,
           });
         }
       }
@@ -144,11 +148,21 @@ export default function HomePage() {
       // Re-filter old session data so products cached before image validation
       // cannot reappear with empty or unsupported image URLs.
       const cachedProducts = JSON.parse(cached);
-      setRandomizedProducts(
-        cachedProducts.filter(
-          (p: Product) => hasUsableProductImage(p.image) && typeof p.price === "number" && p.price > 0
-        )
-      );
+      const validCachedProducts = cachedProducts
+        .map((p: Product) => {
+          const images = [
+            ...(Array.isArray((p as any).images) ? (p as any).images : []),
+            p.image,
+          ].filter(
+            (image: unknown): image is string =>
+              typeof image === "string" && hasUsableProductImage(image)
+          );
+          return images.length && typeof p.price === "number" && p.price > 0
+            ? { ...p, image: images[0], images }
+            : null;
+        })
+        .filter(Boolean) as Product[];
+      setRandomizedProducts(validCachedProducts);
     } else {
       const shuffled = shuffleArray(allProducts);
       sessionStorage.setItem("shuffledProducts", JSON.stringify(shuffled));
@@ -469,17 +483,21 @@ export default function HomePage() {
 
     if (!price || price <= 0) return null;
 
-    if (
-      !p.image ||
-      p.image.trim() === "" ||
-      p.image.includes("placeholder")
-    ) return null;
+    const images = [
+      ...(Array.isArray(p.images) ? p.images : []),
+      p.image,
+    ].filter(
+      (image: unknown): image is string =>
+        typeof image === "string" && hasUsableProductImage(image)
+    );
+    if (images.length === 0) return null;
 
     return {
       ...p,
       price,
       currency: p.currency ?? "PKR",
-      image: p.image,
+      image: images[0],
+      images,
     };
   };
 
