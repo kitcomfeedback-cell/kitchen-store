@@ -158,57 +158,6 @@ async function collectSubcategoryProducts(page, subcategoryUrl) {
   const result = [...links];
   return MAX_PRODUCTS_PER_SUBCAT > 0 ? result.slice(0, MAX_PRODUCTS_PER_SUBCAT) : result;
 }
-async function scrollListing(page) {
-  let stableRounds = 0;
-  let previousCount = 0;
-  const all = new Set();
-
-  for (let round = 0; round < 12 && stableRounds < 3; round++) {
-    for (const link of await getListingLinks(page)) all.add(link);
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(650);
-    for (const link of await getListingLinks(page)) all.add(link);
-
-    if (all.size === previousCount) stableRounds++;
-    else stableRounds = 0;
-    previousCount = all.size;
-  }
-  return [...all];
-}
-
-function pageUrlForNumber(subcategoryUrl, pageNumber) {
-  const url = new URL(subcategoryUrl);
-  if (pageNumber > 1) url.searchParams.set("page", String(pageNumber));
-  else url.searchParams.delete("page");
-  return url.href;
-}
-
-async function collectSubcategoryProducts(page, subcategoryUrl) {
-  const links = new Set();
-  let maxPage = 1;
-
-  await page.goto(subcategoryUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
-  await waitForListing(page);
-  maxPage = Math.max(maxPage, await getMaxPage(page));
-
-  for (let pageNumber = 1; pageNumber <= maxPage; pageNumber++) {
-    const target = pageUrlForNumber(subcategoryUrl, pageNumber);
-    if (page.url() !== target) {
-      await page.goto(target, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
-      await waitForListing(page);
-    }
-
-    for (const link of await scrollListing(page)) links.add(link);
-    const newlyDetectedMax = await getMaxPage(page);
-    if (newlyDetectedMax > maxPage) maxPage = newlyDetectedMax;
-
-    console.log("      Listing page " + pageNumber + "/" + maxPage + ": " + links.size + " unique products");
-  }
-
-  const result = [...links];
-  return MAX_PRODUCTS_PER_SUBCAT > 0 ? result.slice(0, MAX_PRODUCTS_PER_SUBCAT) : result;
-}
-
 async function discoverSubcategories(page) {
   await page.goto(CATEGORY_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
   await page.waitForTimeout(1500);
