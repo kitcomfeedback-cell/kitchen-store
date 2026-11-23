@@ -193,7 +193,7 @@ async function extractProduct(page, url, attempt = 1) {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
     await page.waitForTimeout(800);
 
-    const extracted = await page.evaluate(() => {
+    const extracted = await page.evaluate((productId) => {
       const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
       const meta = (selector) => clean(document.querySelector(selector)?.getAttribute("content"));
       const firstText = (selectors) => {
@@ -237,7 +237,13 @@ async function extractProduct(page, url, attempt = 1) {
             img.getAttribute("data-original"),
             ...String(img.getAttribute("srcset") || "").split(",").map((part) => part.trim().split(/\s+/)[0]),
           ];
-          return sources.filter(Boolean);
+          return sources.filter(Boolean).filter((source) => {
+            try {
+              return new URL(source, location.href).pathname.includes(String(productId));
+            } catch {
+              return false;
+            }
+          });
         }),
       ].filter((value) => {
         try {
@@ -284,7 +290,7 @@ async function extractProduct(page, url, attempt = 1) {
         description: rawDescription,
         brand: brand || null,
       };
-    });
+    }, productIdFromUrl(url));
 
     if (!extracted.title || !extracted.image || !extracted.images?.length) {
       throw new Error("Missing required product fields (title/image)");
