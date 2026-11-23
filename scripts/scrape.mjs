@@ -15,7 +15,7 @@ const REFRESH_DAYS = Math.max(0, Number(process.env.REFRESH_DAYS || 7));
 const MAX_PRODUCTS_PER_SUBCAT = Math.max(0, Number(process.env.MAX_PRODUCTS_PER_SUBCAT || 0));
 const CANDIDATE_POOL_PER_SUBCAT = Math.max(
   10,
-  Number(process.env.CANDIDATE_POOL_PER_SUBCAT || (MAX_PRODUCTS_PER_SUBCAT > 0 ? MAX_PRODUCTS_PER_SUBCAT * 5 : 0))
+  Number(process.env.CANDIDATE_POOL_PER_SUBCAT || (MAX_PRODUCTS_PER_SUBCAT > 0 ? MAX_PRODUCTS_PER_SUBCAT * 10 : 0))
 );
 const NAV_TIMEOUT = 60000;
 const PRODUCT_PATH = "/shop/product/";
@@ -181,10 +181,11 @@ async function discoverSubcategories(page) {
         if (!remainder || remainder.includes("/")) continue;
 
         const name = decodeURIComponent(remainder);
+        // Pagination routes such as /Kitchenware/page-2 are not subcategories.
         if (
           !name ||
           name.toLowerCase() === "kitchenware" ||
-          /^page-\\d+$/i.test(name)
+          /^page-\d+$/i.test(name)
         ) continue;
         url.search = "";
         url.hash = "";
@@ -316,8 +317,33 @@ async function extractProduct(page, url, attempt = 1) {
       };
     }, productIdFromUrl(url));
 
-    if (!extracted.title || !extracted.image || !extracted.images?.length) {
-      throw new Error("Missing required product fields (title/image)");
+    // Verify actual browser image loading instead of trusting URL shape alone.
+    const validImages = await page.evaluate(async (candidates) => {
+      const check = (src) => new Promise((resolve) => {
+        const image = new Image();
+        const timeout = window.setTimeout(() => {
+          image.onload = null;
+          image.onerror = null;
+          resolve(false);
+        }, 12000);
+        image.onload = () => {
+          window.clearTimeout(timeout);
+          resolve(image.naturalWidth > 0 && image.naturalHeight > 0);
+        };
+        image.onerror = () => {
+          window.clearTimeout(timeout);
+          resolve(false);
+        };
+        image.src = src;
+      });
+      const results = await Promise.all(
+        candidates.map(async (src) => ({ src, ok: await check(src) }))
+      );
+      return results.filter((item) => item.ok).map((item) => item.src);
+    }, extracted.images || []);
+
+    if (!extracted.title || !validImages.length) {
+      throw new Error("Missing title or no product images could be loaded");
     }
 
     return {
@@ -328,8 +354,8 @@ async function extractProduct(page, url, attempt = 1) {
       reviewCount: extracted.reviewCount,
       salesCount: extracted.salesCount,
       currency: extracted.currency || "PKR",
-      image: extracted.image,
-      images: extracted.images,
+      image: validImages[0],
+      images: validImages,
       link: url,
       description: extracted.description || "",
       brand: extracted.brand || null,
@@ -452,7 +478,8 @@ async function scrape() {
         const productPage = await context.newPage();
         try {
           const parsed = await extractProduct(productPage, link);
-          return parsed || (cached?.image ? cached : null);
+          // Never fall back to an old cached image URL after a fresh validation fails.
+          return parsed;
         } finally {
           await productPage.close().catch(() => {});
         }
