@@ -235,9 +235,14 @@ export default function ProductPage() {
   const validImages = [
     ...(Array.isArray(product.images) ? product.images : []),
     product.image,
-  ].filter((img: string | undefined, index: number, all: (string | undefined)[]) =>
-    isUsableProductImage(img) && !failedImages.includes(img) && all.indexOf(img) === index
-  ) as string[];
+  ]
+    .filter(
+      (img): img is string =>
+        typeof img === "string" &&
+        isUsableProductImage(img) &&
+        !failedImages.includes(img)
+    )
+    .filter((img, index, all) => all.indexOf(img) === index);
 
   const images = validImages;
 
