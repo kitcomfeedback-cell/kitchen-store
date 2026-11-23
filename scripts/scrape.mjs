@@ -431,10 +431,12 @@ async function scrape() {
 
       const products = await mapLimit(candidateLinks, PARSE_CONCURRENCY, async (link) => {
         const cached = existingByLink.get(link);
+        const hasMetric = (value) =>
+          value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
         const cacheHasRanking = cached &&
-          (Number.isFinite(Number(cached.salesCount)) ||
-           Number.isFinite(Number(cached.reviewCount)) ||
-           Number.isFinite(Number(cached.rating)));
+          (hasMetric(cached.salesCount) ||
+           hasMetric(cached.reviewCount) ||
+           hasMetric(cached.rating));
         if (
           cached &&
           Array.isArray(cached.images) &&
@@ -462,8 +464,8 @@ async function scrape() {
       candidates.sort((a, b) => {
         const A = a.product, B = b.product;
         const compareAvailable = (field, direction = -1) => {
-          const av = Number.isFinite(Number(A[field])) ? Number(A[field]) : null;
-          const bv = Number.isFinite(Number(B[field])) ? Number(B[field]) : null;
+          const av = A[field] !== null && A[field] !== undefined && A[field] !== "" && Number.isFinite(Number(A[field])) ? Number(A[field]) : null;
+          const bv = B[field] !== null && B[field] !== undefined && B[field] !== "" && Number.isFinite(Number(B[field])) ? Number(B[field]) : null;
           if (av === null && bv === null) return 0;
           if (av === null) return 1;
           if (bv === null) return -1;
