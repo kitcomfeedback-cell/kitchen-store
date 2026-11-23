@@ -140,7 +140,14 @@ export default function HomePage() {
   useEffect(() => {
     const cached = sessionStorage.getItem("shuffledProducts");
     if (cached) {
-      setRandomizedProducts(JSON.parse(cached));
+      // Re-filter old session data so products cached before image validation
+      // cannot reappear with empty or unsupported image URLs.
+      const cachedProducts = JSON.parse(cached);
+      setRandomizedProducts(
+        cachedProducts.filter(
+          (p: Product) => hasUsableProductImage(p.image) && typeof p.price === "number" && p.price > 0
+        )
+      );
     } else {
       const shuffled = shuffleArray(allProducts);
       sessionStorage.setItem("shuffledProducts", JSON.stringify(shuffled));
