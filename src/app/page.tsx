@@ -40,6 +40,20 @@ interface Product {
   brand?: string | null;
 }
 
+function hasUsableProductImage(image?: string | null): boolean {
+  if (!image || typeof image !== "string") return false;
+  try {
+    const url = new URL(image);
+    return (
+      url.protocol === "https:" &&
+      ["static.markaz.app", "content.public.markaz.app", "www.shop.markaz.app"].includes(url.hostname) &&
+      !/placeholder|markaz_logo_mobile|\.svg(?:$|\?)/i.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /* 🔁 Shuffle Array */
 function shuffleArray<T>(array: T[]): T[] {
   const arr = [...array];
@@ -105,11 +119,8 @@ export default function HomePage() {
           if (!price || price <= 0) continue;
 
           // ❌ Skip missing / placeholder image
-          if (
-            !p.image ||
-            p.image.trim() === "" ||
-            p.image.includes("placeholder")
-          ) continue;
+          // Keep only products with a valid, supported Markaz product image URL.
+          if (!hasUsableProductImage(p.image)) continue;
 
           items.push({
             ...p,
