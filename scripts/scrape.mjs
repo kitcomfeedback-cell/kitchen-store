@@ -181,7 +181,11 @@ async function discoverSubcategories(page) {
         if (!remainder || remainder.includes("/")) continue;
 
         const name = decodeURIComponent(remainder);
-        if (!name || name.toLowerCase() === "kitchenware") continue;
+        if (
+          !name ||
+          name.toLowerCase() === "kitchenware" ||
+          /^page-\\d+$/i.test(name)
+        ) continue;
         url.search = "";
         url.hash = "";
         found.set(url.href, { name, url: url.href });
