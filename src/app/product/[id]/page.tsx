@@ -21,20 +21,59 @@ import {
   CornerUpLeft,
 } from "lucide-react";
 
+const PRODUCT_IMAGE_HOSTS = [
+  "static.markaz.app",
+  "content.public.markaz.app",
+  "www.shop.markaz.app",
+];
+
+function isUsableProductImage(value?: string | null): boolean {
+  if (!value || typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      PRODUCT_IMAGE_HOSTS.includes(url.hostname) &&
+      !/placeholder|markaz_logo_mobile|\.svg(?:$|\?)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function stripSupplierProductCodes(value: string): string {
+  return value
+    .replace(/\s*[,;|•-]?\s*Product\s*Code\s*:\s*[A-Z0-9_-]+/gi, "")
+    .replace(/\bMZ[A-Z0-9_-]{8,}\b/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 function cleanProductDescription(value?: string): string[] {
   if (!value) return [];
-
-  // Remove supplier-only product codes even when appended to the end of a sentence.
-  const cleaned = value
-    .replace(/\\s*[,;|•-]?\\s*Product\\s*Code\\s*:\\s*[A-Z0-9_-]+/gi, "")
-    .replace(/\\bMZ[A-Z0-9_-]{8,}\\b/gi, "")
-    // Split common specification labels and hyphen-separated feature lists.
-    .replace(/\\s+-\\s+/g, "\\n")
-    .replace(/\\s+(?=(?:Material|Number\\s+Of\\s+Pieces|Product\\s+Feature|Color|Colors|Package\\s+Includes|Length|Width|Height|Set\\s+Of|Note|Size|Sizes)\\s*:)/gi, "\\n")
-    .replace(/[ \\t]+/g, " ")
+  const cleaned = stripSupplierProductCodes(value)
+    .replace(/\s+-\s+/g, "\n")
+    .replace(/\s+(?=(?:Material|Number\s+Of\s+Pieces|Product\s+Feature|Color|Colors|Package\s+Includes|Length|Width|Height|Set\s+Of|Note|Size|Sizes|Capacity|Weight)\s*:)/gi, "\n")
+    .replace(/[ \t]+/g, " ")
     .trim();
 
-  return cleaned.split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
+  return cleaned
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function extractOptionValues(description: string | undefined, label: "Color" | "Size"): string[] {
+  if (!description) return [];
+  const clean = stripSupplierProductCodes(description).replace(/\s+/g, " ");
+  const labels = "(?:Material|Number\\s+Of\\s+Pieces|Product\\s+Feature|Colors?|Package\\s+Includes|Length|Width|Height|Set\\s+Of|Note|Sizes?|Capacity|Weight)";
+  const match = clean.match(new RegExp("(?:^|[;,|])\\s*" + label + "s?\\s*:\\s*(.+?)(?=\\s+(?:" + labels + ")\\s*:|$)", "i"));
+  if (!match) return [];
+
+  return match[1]
+    .split(/\s*(?:,|\/|\||;|\bor\b)\s*/i)
+    .map((value) => value.trim())
+    .filter((value) => value && value.length <= 35 && !/package|includes|note|manual measurement|lighting|monitor effects/i.test(value))
+    .filter((value, index, all) => all.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
+    .slice(0, 12);
 }
 
 export default function ProductPage() {
@@ -89,7 +128,7 @@ export default function ProductPage() {
         subcategory: s.name || "Unknown",
         price: typeof match.price === "number" ? match.price : 0, // ✅ fallback to 0
         currency: match.currency || "PKR", // ✅ fallback to PKR
-        image: match.image || "/placeholder.png", // ✅ fallback image
+        image: isUsableProductImage(match.image) ? match.image : undefined,
         };
         break;
         }
@@ -111,12 +150,7 @@ export default function ProductPage() {
             typeof p.price === "number" && p.price > 0
               ? p.price
               : null,
-          image:
-            p.image &&
-            !p.image.includes("placeholder") &&
-            !p.image.endsWith(".svg")
-              ? p.image
-              : null,
+          image: isUsableProductImage(p.image) ? p.image : null,
         }))
       )
     )
@@ -125,7 +159,7 @@ export default function ProductPage() {
       (p: any) =>
         p.price !== null &&
         p.price > 0 &&
-        p.image !== null
+        p.image !== null && isUsableProductImage(p.image)
     );
 
     // 1️⃣ Try products in same subcategory
@@ -180,28 +214,28 @@ export default function ProductPage() {
       return <div className="p-6 text-center text-gray-500">Loading...</div>;
     }
 
-  // ✅ Normalize product images to ensure all display
-  const isUsableImageUrl = (value?: string | null) => {
-    if (!value || typeof value !== "string") return false;
-    try {
-      const url = new URL(value);
-      return url.protocol === "https:" &&
-        ["static.markaz.app", "content.public.markaz.app", "www.shop.markaz.app"].includes(url.hostname) &&
-        !/placeholder|markaz_logo_mobile|\\.svg(?:$|\\?)/i.test(url.pathname);
-    } catch {
-      return false;
-    }
-  };
+  // Use every valid gallery image, while never substituting a fake placeholder.
+  const validImages = [
+    ...(Array.isArray(product.images) ? product.images : []),
+    product.image,
+  ].filter((img: string | undefined, index: number, all: (string | undefined)[]) =>
+    isUsableProductImage(img) && all.indexOf(img) === index
+  ) as string[];
 
-  const validImages = Array.isArray(product.images)
-    ? product.images.filter((img: string) => isUsableImageUrl(img))
-    : [];
+  const images = validImages;
 
-  const images = [...validImages, ...(isUsableImageUrl(product.image) ? [product.image as string] : [])]
-    .filter((value, index, self) => self.indexOf(value) === index);
-
-  if (images.length === 0) images.push("/placeholder.png");
-
+  if (images.length === 0) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center p-8 text-center">
+        <div className="mb-4 rounded-full bg-gray-100 p-5 text-gray-400">
+          <XCircle size={36} />
+        </div>
+        <h1 className="text-xl font-semibold text-gray-900">Product currently unavailable</h1>
+        <p className="mt-2 text-sm text-gray-600">This product does not have a valid image and is temporarily hidden from the store.</p>
+        <button onClick={() => router.back()} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white hover:bg-blue-700">Go back</button>
+      </div>
+    );
+  }
 
   const applyCoupon = () => {
     const validCoupons: Record<string, number> = {
@@ -339,6 +373,7 @@ const addToCart = (goCheckout = false) => {
                 key={i}
                 className="w-full flex-shrink-0"
                 onClick={() => {
+                  setCurrentIndex(i);
                   setSelectedImage(img);
                   setShowGallery(true);
                 }}
@@ -389,86 +424,101 @@ const addToCart = (goCheckout = false) => {
         </div>
       </div>
 
-      {/* 🔍 Fullscreen Lightbox with Slider */}
+      {/* Full-screen product image viewer */}
       {showGallery && (
         <div
-          className="fixed top-0 left-0 w-screen h-screen z-50 bg-black/90 flex flex-col items-center justify-start overflow-hidden"
-          style={{ overscrollBehavior: "none" }}
+          className="fixed inset-0 z-[100] flex flex-col bg-black text-white"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Product image gallery"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setShowGallery(false);
+            if (event.key === "ArrowRight") {
+              const next = (currentIndex + 1) % images.length;
+              setCurrentIndex(next);
+              setSelectedImage(images[next]);
+            }
+            if (event.key === "ArrowLeft") {
+              const prev = (currentIndex - 1 + images.length) % images.length;
+              setCurrentIndex(prev);
+              setSelectedImage(images[prev]);
+            }
+          }}
+          tabIndex={-1}
         >
-          {/* ❌ Close Button */}
-          <button
-            onClick={() => setShowGallery(false)}
-            className="absolute top-6 right-6 text-white hover:text-red-400 transition"
-          >
-            <X size={36} />
-          </button>
-
-          {/* 🔄 Image Slider */}
-          <div
-            className="relative w-full max-w-3xl overflow-hidden flex items-start justify-center mt-55"
-            {...swipeHandlers}
-          >
-            <div
-              className="flex transition-transform duration-700 ease-in-out"
-              style={{
-                transform: `translateX(-${images.findIndex(img => img === selectedImage) * 100}%)`,
-              }}
-            >
-              {images.map((img, i) => (
-                <div
-                  key={i}
-                  className="w-full flex-shrink-0 flex items-center justify-center"
-                >
-                  <Image
-                    src={img}
-                    alt={`Product image ${i + 1}`}
-                    width={900}
-                    height={700}
-                    unoptimized
-                    className="object-contain max-h-[75vh] rounded-lg mt-0"
-                  />
-
-                </div>
-              ))}
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-7">
+            <div className="min-w-0 pr-4">
+              <p className="truncate text-sm font-semibold sm:text-base">{product.title}</p>
+              <p className="mt-0.5 text-xs text-white/60">{currentIndex + 1} / {images.length}</p>
             </div>
-
-            {/* ◀️ Prev */}
             <button
+              type="button"
+              onClick={() => setShowGallery(false)}
+              aria-label="Close image viewer"
+              className="rounded-full bg-white/10 p-2.5 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
+            >
+              <X size={25} />
+            </button>
+          </div>
+
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-12 py-4 sm:px-20">
+            <button
+              type="button"
+              aria-label="Previous image"
               onClick={() => {
-                const current = images.findIndex((img) => img === selectedImage);
-                const prev = (current - 1 + images.length) % images.length;
+                const prev = (currentIndex - 1 + images.length) % images.length;
+                setCurrentIndex(prev);
                 setSelectedImage(images[prev]);
               }}
-              className="absolute left-5 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition"
+              disabled={images.length < 2}
+              className="absolute left-2 z-10 rounded-full bg-white/10 p-3 text-white transition hover:bg-white/25 disabled:opacity-30 sm:left-6"
             >
-              ‹
+              <ChevronLeft size={28} />
             </button>
 
-            {/* ▶️ Next */}
+            <img
+              src={images[currentIndex] || selectedImage || images[0]}
+              alt={product.title}
+              className="max-h-full max-w-full select-none object-contain"
+              draggable={false}
+            />
+
             <button
+              type="button"
+              aria-label="Next image"
               onClick={() => {
-                const current = images.findIndex((img) => img === selectedImage);
-                const next = (current + 1) % images.length;
+                const next = (currentIndex + 1) % images.length;
+                setCurrentIndex(next);
                 setSelectedImage(images[next]);
               }}
-              className="absolute right-5 top-1/2 -translate-y-1/2 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 transition"
+              disabled={images.length < 2}
+              className="absolute right-2 z-10 rounded-full bg-white/10 p-3 text-white transition hover:bg-white/25 disabled:opacity-30 sm:right-6"
             >
-              ›
+              <ChevronLeft className="rotate-180" size={28} />
             </button>
           </div>
 
-          {/* ⚪ Dots */}
-          <div className="flex space-x-3 mt-6">
-            {images.map((img, i) => (
-              <button
-                key={i}
-                onClick={() => setSelectedImage(img)}
-                className={`w-3 h-3 rounded-full transition-all ${
-                  img === selectedImage ? "bg-white scale-125" : "bg-gray-500"
-                }`}
-              ></button>
-            ))}
-          </div>
+          {images.length > 1 && (
+            <div className="shrink-0 border-t border-white/10 px-3 py-3 sm:px-6">
+              <div className="mx-auto flex max-w-full gap-2 overflow-x-auto pb-1">
+                {images.map((img, index) => (
+                  <button
+                    type="button"
+                    key={img}
+                    onClick={() => {
+                      setCurrentIndex(index);
+                      setSelectedImage(img);
+                    }}
+                    aria-label={"Show image " + (index + 1)}
+                    aria-current={index === currentIndex ? "true" : undefined}
+                    className={"h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition sm:h-20 sm:w-20 " + (index === currentIndex ? "border-white" : "border-white/20 opacity-65 hover:opacity-100")}
+                  >
+                    <img src={img} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -548,111 +598,49 @@ const addToCart = (goCheckout = false) => {
         </div>
 
         {(() => {
-            if (!product.description) return null;
+          const colors = extractOptionValues(product.description, "Color");
+          const sizes = extractOptionValues(product.description, "Size");
+          if (colors.length === 0 && sizes.length === 0) return null;
 
-            const desc = product.description;
-
-            // ✅ Match lines that *explicitly* mention Size or Sizes
-            const sizeLineMatch = desc.match(/(?:Size|Sizes)\s*:\s*([^\n]+)/i);
-            const colorLineMatch = desc.match(/(?:Color|Colors)\s*:\s*([^\n]+)/i);
-
-            // Extract values if present
-            const sizeList: string[] = sizeLineMatch
-                ? sizeLineMatch[1]
-                    .split(/[,/| ]+/)
-                    .map((s: string) => s.trim())
-                    .filter(Boolean)
-                : [];
-
-            const colorList: string[] = colorLineMatch
-                ? colorLineMatch[1]
-                    .split(/[,/| ]+/)
-                    .map((c: string) => c.trim())
-                    .filter(Boolean)
-                : [];
-
-            return (
-                <>
-                {/* 🎨 Colors Section */}
-                {(() => {
-                  if (!product.description) return null;
-
-                  // 🧩 Extract color line from description
-                  const colorLineMatch = product.description.match(/(?:Color|Colors)\s*:\s*([^\n]+)/i);
-
-                  const colorList: string[] = colorLineMatch
-                    ? colorLineMatch[1]
-                        .split(/[,/|]+/)
-                        .map((c: string) => c.trim())
-                        .filter(Boolean)
-                    : [];
-
-                  if (colorList.length === 0) return null;
-
-                  // 🎨 Common color name to HEX map
-                  const colorMap: Record<string, string> = {
-                    red: "#FF0000",
-                    blue: "#0000FF",
-                    green: "#008000",
-                    black: "#000000",
-                    white: "#FFFFFF",
-                    yellow: "#FFFF00",
-                    pink: "#FFC0CB",
-                    orange: "#FFA500",
-                    purple: "#800080",
-                    grey: "#808080",
-                    gray: "#808080",
-                    brown: "#8B4513",
-                    beige: "#F5F5DC",
-                    silver: "#C0C0C0",
-                    gold: "#FFD700",
-                  };
-
-                  return (
-                    <div className="mt-4">
-                      <h3 className="font-medium mb-2">Available Colors</h3>
-                      <div className="flex flex-wrap gap-3">
-                        {colorList.map((c: string, index: number) => {
-                          const colorKey = c.toLowerCase();
-                          const colorValue = colorMap[colorKey] || "#ccc";
-
-                          return (
-                            <button
-                              key={index}
-                              onClick={() => setSelectedColor(c)}
-                              className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition ${
-                                selectedColor === c
-                                  ? "border-blue-500 bg-blue-50"
-                                  : "border-gray-300 bg-white"
-                              }`}
-                            >
-                              {/* 🟢 Color Circle */}
-                              <span
-                                className="w-6 h-6 rounded-full border"
-                                style={{
-                                  backgroundColor: colorValue,
-                                  borderColor:
-                                    colorKey === "white" || colorKey === "yellow"
-                                      ? "#ccc"
-                                      : "transparent",
-                                }}
-                              />
-                              {/* 🏷️ Color Name */}
-                              <span className="text-sm font-medium capitalize text-gray-800">
-                                {c}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-                </>
-            );
-            })()}
-
-         <br/>
+          return (
+            <div className="mt-4 space-y-4">
+              {colors.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold text-gray-800">Available Colors</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {colors.map((color) => (
+                      <button
+                        type="button"
+                        key={color}
+                        onClick={() => setSelectedColor(color)}
+                        className={"rounded-full border px-4 py-2 text-sm font-medium capitalize transition " + (selectedColor === color ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-100" : "border-gray-300 bg-white text-gray-700 hover:border-blue-400")}
+                      >
+                        {color}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sizes.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold text-gray-800">Available Sizes</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {sizes.map((size) => (
+                      <button
+                        type="button"
+                        key={size}
+                        onClick={() => setSelectedSize(size)}
+                        className={"min-w-12 rounded-lg border px-4 py-2 text-sm font-medium transition " + (selectedSize === size ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-100" : "border-gray-300 bg-white text-gray-700 hover:border-blue-400")}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 🎟️ Coupon Bar */}
         <div className="flex items-center space-x-2 mb-6">
