@@ -35,6 +35,7 @@ interface Product {
   price?: number | null;
   currency?: string | null;
   image?: string | null;
+  images?: string[];
   link: string;
   description?: string;
   brand?: string | null;
