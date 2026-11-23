@@ -65,7 +65,7 @@ function extractOptionValues(description: string | undefined, label: "Color" | "
   if (!description) return [];
   const clean = stripSupplierProductCodes(description).replace(/\s+/g, " ");
   const labels = "(?:Material|Number\\s+Of\\s+Pieces|Product\\s+Feature|Colors?|Package\\s+Includes|Length|Width|Height|Set\\s+Of|Note|Sizes?|Capacity|Weight)";
-  const match = clean.match(new RegExp("(?:^|[;,|])\\s*" + label + "s?\\s*:\\s*(.+?)(?=\\s+(?:" + labels + ")\\s*:|$)", "i"));
+  const match = clean.match(new RegExp("(?:^|[\\s;,|])" + label + "s?\\s*:\\s*(.+?)(?=\\s+(?:" + labels + ")\\s*:|$)", "i"));
   if (!match) return [];
 
   return match[1]
