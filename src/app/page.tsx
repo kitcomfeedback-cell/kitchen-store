@@ -506,6 +506,9 @@ export default function HomePage() {
   /* 🎯 Filter by Subcategory (Show exactly all products under it, with +50% price) */
   const filterByCategory = (subcategoryName: string) => {
     setIsLoading(true);
+    // A product hidden after an earlier failed image request must be retried
+    // when the customer opens a category again.
+    setFailedProductIds([]);
     setActiveSubcategory(subcategoryName);
     const matchedSub = catalogData.categories
       ?.flatMap((c: any) => c.subcategories || [])
@@ -963,7 +966,7 @@ export default function HomePage() {
       {isSearchActive && filteredProducts && (
         <>
         <p className="text-center text-sm text-gray-600 mb-4">
-          Showing <span className="font-semibold">{filteredProducts.length}</span> results for <span className="font-semibold">"{searchTerm || activeSubcategory}"</span>
+          Showing <span className="font-semibold">{displayProducts.filter((product) => !failedProductIds.includes(product.id)).length}</span> results for <span className="font-semibold">"{searchTerm || activeSubcategory}"</span>
         </p>
         
         {/* 🔽 Modern Filter Dropdown (Mobile Safe) */}
