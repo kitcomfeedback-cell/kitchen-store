@@ -90,6 +90,7 @@ export default function ProductPage() {
   const [extraInfo, setExtraInfo] = useState("");
   const [couponError, setCouponError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [failedImages, setFailedImages] = useState<string[]>([]);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -151,6 +152,7 @@ export default function ProductPage() {
               ? p.price
               : null,
           image: isUsableProductImage(p.image) ? p.image : null,
+          images: Array.isArray(p.images) ? p.images.filter((img: string) => isUsableProductImage(img)) : [],
         }))
       )
     )
@@ -159,8 +161,12 @@ export default function ProductPage() {
       (p: any) =>
         p.price !== null &&
         p.price > 0 &&
-        p.image !== null && isUsableProductImage(p.image)
-    );
+        (p.image !== null || p.images.length > 0)
+    )
+    .map((p: any) => ({
+      ...p,
+      image: p.image || p.images[0],
+    }));
 
     // 1️⃣ Try products in same subcategory
     let related = allProducts.filter(
@@ -219,7 +225,7 @@ export default function ProductPage() {
     ...(Array.isArray(product.images) ? product.images : []),
     product.image,
   ].filter((img: string | undefined, index: number, all: (string | undefined)[]) =>
-    isUsableProductImage(img) && all.indexOf(img) === index
+    isUsableProductImage(img) && !failedImages.includes(img) && all.indexOf(img) === index
   ) as string[];
 
   const images = validImages;
@@ -385,6 +391,10 @@ const addToCart = (goCheckout = false) => {
                   height={600}
                   priority
                   unoptimized
+                  onError={() => {
+                    setFailedImages((previous) => previous.includes(img) ? previous : [...previous, img]);
+                    setCurrentIndex((previous) => Math.min(previous, Math.max(0, images.length - 2)));
+                  }}
                   className="object-contain w-full h-[500px] rounded-2xl cursor-pointer bg-white"
                 />
               </div>
@@ -445,6 +455,7 @@ const addToCart = (goCheckout = false) => {
             }
           }}
           tabIndex={-1}
+          autoFocus
         >
           <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-7">
             <div className="min-w-0 pr-4">
@@ -481,6 +492,13 @@ const addToCart = (goCheckout = false) => {
               alt={product.title}
               className="max-h-full max-w-full select-none object-contain"
               draggable={false}
+              onError={() => {
+                const failed = images[currentIndex];
+                if (failed) {
+                  setFailedImages((previous) => previous.includes(failed) ? previous : [...previous, failed]);
+                  setCurrentIndex((previous) => Math.min(previous, Math.max(0, images.length - 2)));
+                }
+              }}
             />
 
             <button
@@ -513,7 +531,12 @@ const addToCart = (goCheckout = false) => {
                     aria-current={index === currentIndex ? "true" : undefined}
                     className={"h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition sm:h-20 sm:w-20 " + (index === currentIndex ? "border-white" : "border-white/20 opacity-65 hover:opacity-100")}
                   >
-                    <img src={img} alt="" className="h-full w-full object-cover" />
+                    <img
+                      src={img}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      onError={() => setFailedImages((previous) => previous.includes(img) ? previous : [...previous, img])}
+                    />
                   </button>
                 ))}
               </div>
