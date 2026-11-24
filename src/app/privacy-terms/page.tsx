@@ -159,10 +159,10 @@ export default function PrivacyAndTermsPage() {
             <li>
               📞{" "}
               <a
-                href="https://wa.me/923036789310"
+                href="https://wa.me/923156038062"
                 className="text-blue-600 hover:underline"
               >
-                +92 303 6789310
+                Contact On Whatsapp
               </a>
             </li>
           </ul>
